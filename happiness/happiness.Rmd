@@ -1,0 +1,111 @@
+---
+title: "happiness"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(formattable)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(ggraph)
+library(plotly)
+library(readr)
+```
+
+```{r read}
+df <- read_csv("~/git_repo/opendata_viz/happiness/happiness.csv")
+colnames(df)[c(4, 7:12)] <- c('happiness','economy','family','health','freedom','trust','generosity')
+#df$happiness_band <- cut(df$`Happiness Score`, breaks=c()
+```
+
+
+
+```{r cleaning}
+#divide sub-saharan africa as it contains too many countries
+library(countrycode)
+df= df %>%
+  mutate(Region = ifelse(Region == "Sub-Saharan Africa",
+    countrycode(Country, 'country.name', 'region'), Region)) %>%
+  mutate(Region = ifelse((Region =="Australia and New Zealand"|
+                           Region == "Eastern Asia"), "Eastern Asia and ANZ", Region)) %>%
+  mutate(Region = ifelse(Region=="Northern Africa", "Middle East and Northern Africa", Region))
+```
+
+```{r split}
+out <- split( df , f = df$Region)
+
+```
+
+```{r}
+#to print ggplot in loop, one must use print()
+
+for (i in (1:length(unique(df$Region)))) {
+df_melt <- out[i] %>% #filter(Region=="Western Europe") %>%
+  melt(id.vars = c("Country", "happiness"), measure.vars = c("economy",'family','health','freedom','trust', "generosity")) 
+ 
+print(df_melt %>% ggplot(aes(x=variable, y=value, fill=Country)) + 
+ geom_bar(stat = "identity", position="dodge",alpha=0.6) + 
+ coord_polar() + 
+ theme_minimal() +
+ scale_y_continuous(limits = c(0, 1.2)) +
+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+       axis.title.y=element_blank(),axis.title.x=element_blank(), 
+          axis.text.y=element_blank() 
+       ) )
+}
+#jpeg(paste0("happy",i))
+dev.off()
+```
+```{r}
+df_melt %>% ggplot(aes(x=variable, y=value, fill=Country)) + 
+ geom_bar(stat = "identity", position="dodge",alpha=0.6) + 
+ coord_polar() + 
+ theme_minimal() +
+ scale_y_continuous(limits = c(0, 1.2)) +
+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+       axis.title.y=element_blank(),axis.title.x=element_blank(), 
+          axis.text.y=element_blank() 
+       )  + facet_wrap(~L1)
+```
+
+```{r changes}
+# p <- df%>%ggplot(aes(economy, happiness)) + 
+# geom_point(aes(col=Region))+
+# geom_smooth()
+# theme_minimal() 
+# ggplotly(p)
+
+```
+```{r clustering}
+library("ape")
+library(RColorBrewer)
+hc=hclust(dist(df[7:12], method='euclidean'), 
+          method='ward.D2')
+cols<-brewer.pal(n=6,name="Dark2")
+plot(as.phylo(hc), type = "fan",cex = 0.5, tip.color = cols[cutree(hc,6)])
+```
+```{r ggraph}
+drinksDen <- as.dendrogram(hclust(dist(df[7:12], method='euclidean'),
+                                method='ward.D2'))
+ggraph(graph = drinksDen, layout = 'dendrogram', repel = TRUE, circular = TRUE,
+       ratio = 0.5) +
+  geom_edge_elbow() +
+  geom_node_text(aes(x = x*1.15, y=y*1.15, filter=leaf,
+                     angle = node_angle(x, y), label = label),
+                 size=1.2, hjust='outward') +
+  geom_node_point(aes(filter=leaf)) +
+  coord_fixed() +
+  ggforce::theme_no_axes()
+```
+```{r}
+set.seed(1)
+ggraph(drinksDen, 'circlepack', weight = 'size') + 
+    geom_node_circlepack( size = 0.25, n = 50) + 
+    coord_fixed()
+```
+
+
+

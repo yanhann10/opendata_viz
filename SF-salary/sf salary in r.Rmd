@@ -1,0 +1,95 @@
+
+```{r}
+Salaries <- read.csv("~/Python/Salaries.csv", stringsAsFactors=FALSE, na=c("Not Provided"))
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+library(formattable)
+```{r}
+#cleaning data
+Salaries%>%
+  mutate(BasePay=as.numeric(BasePay))%>%
+  mutate(OvertimePay=as.numeric(OvertimePay))%>%
+  mutate(OtherPay=as.numeric(OtherPay))%>%
+  mutate(Benefits=as.numeric(Benefits))
+Salaries=Salaries[Salaries$TotalPayBenefits>=0,]
+#salaries over the years
+Salaries%>%ggplot(aes(x = TotalPayBenefits)) +
+     geom_boxplot(aes(fill = factor(Year)), alpha = 0.6)
+
+#income disparity by pay type across the years
+Salaries%>%
+  select(Year,JobTitle,BasePay,OvertimePay, OtherPay,Benefits,
+         TotalPayBenefits )%>%
+  melt(id=c("JobTitle","Year"))%>%
+  ggplot(aes(x=variable,y=value))+geom_boxplot(aes(fill=variable))+facet_wrap(~Year)+ggtitle('Income Variation by Type 2011-2014')
+
+#distribution of pay types
+```
+
+```{r}
+#how do totalpaybenefits changes over the year
+Salaries%>%
+  select(Year,TotalPayBenefits)%>%
+  ggplot(aes(factor(Year),TotalPayBenefits))+geom_violin(aes(fill=factor(Year)))+ggtitle('Total Pay Over the Years')
+```
+```{r}
+
+#top-paid FT job
+Salaries%>%
+  filter(Year==2014&Status=='FT')%>%
+  arrange(desc(TotalPayBenefits))%>%
+  head(10)%>%
+  mutate(TotalPayBenefits=round(TotalPayBenefits,0))%>%
+  select(JobTitle,TotalPayBenefits)%>%
+   formattable(list(TotalPayBenefits = color_bar("lightblue",0.9)),
+    align = 'l')
+#bottom-paid FT job
+Salaries%>%
+  filter(Year==2014&TotalPayBenefits>0&Status=='FT')%>%
+  arrange(desc(TotalPayBenefits))%>%
+  select(JobTitle,TotalPayBenefits)%>%
+  mutate(TotalPayBenefits=round(TotalPayBenefits,0))%>%
+    tail(10)%>%
+   formattable(list(TotalPayBenefits = color_bar("pink",0.9)),
+    align = 'l')
+
+Q25%>%
+  arrange(desc(TotalPayBenefits))%>%
+  head()%>%
+  select(JobTitle,TotalPayBenefits)%>%
+   formattable(
+    list(TotalPayBenefits = color_bar("pink",1)),
+    align = 'l') 
+
+#what jobs return highest quartile of salaries
+Q75=Salaries%>%
+  filter(TotalPayBenefits>=quantile(TotalPayBenefits,0.75))
+library(tm)
+library(SnowballC)
+library(wordcloud)
+jobcorpus <- Corpus(VectorSource(Q75$JobTitle))
+jobcorpus <- tm_map(jobcorpus, PlainTextDocument)
+jobcorpus <- tm_map(jobcorpus, removePunctuation)
+jobcorpus <- tm_map(jobcorpus, removeWords, stopwords('english'))
+wordcloud(jobcorpus, max.words = 100, random.order = FALSE,colors=brewer.pal(8, 'Dark2'))
+```
+
+```{r}
+#what jobs return lowest quartile of salaries
+Q25=Salaries%>%
+  filter(TotalPayBenefits<=quantile(TotalPayBenefits,0.25))
+jobcorpus <- Corpus(VectorSource(Q25$JobTitle))
+jobcorpus <- tm_map(jobcorpus, PlainTextDocument)
+jobcorpus <- tm_map(jobcorpus, removePunctuation)
+jobcorpus <- tm_map(jobcorpus, removeWords, stopwords('english'))
+wordcloud(jobcorpus, max.words = 100, random.order = FALSE,colors=brewer.pal(8, 'Dark2'))
+```
+```{r}
+sfm=Salaries%>%
+  select(BasePay,OvertimePay,OtherPay)
+sfscaled=as.matrix(scale(sfm))
+```
+

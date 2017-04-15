@@ -1,0 +1,44 @@
+---
+title: "extinct_languages"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(tidytext)
+library(networkD3)
+library(visNetwork)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo = FALSE)
+data <- read_csv("~/git_repo/extinct_languages/data.csv")
+```
+
+```{r}
+data<-data %>% mutate(type=ifelse(grepl(",",Countries),"Multi-country","Single-country"))
+data%>%
+  count(`Degree of endangerment`, type)%>%
+  ggplot(aes(reorder(`Degree of endangerment`,n),n,group=type,fill=type))+
+  geom_bar(stat="identity")+theme_minimal()+ylab("num of languages")+
+  coord_flip()+
+  ggtitle("Language and extinction risk")
+
+```
+
+
+```{r network}
+links <- data %>%
+  filter(`Degree of endangerment`=='Extinct')%>%
+  select(`Name in English`, Countries, `Degree of endangerment`) %>%
+  mutate(Countries=strsplit(Countries,",")) %>%
+  unnest(Countries) %>%
+  rename(from=`Name in English`, to=Countries, 
+         significance=`Degree of endangerment`)%>%
+  mutate(continents=ifelse(to %in% c("China","Buhtan","Republic of Korea",
+                    " Viet Nam","Lao People's Democratic Republic" ),    "APAC",ifelse(to %in% c("United States of America"), "NA","EMEA")))
+node1=data.frame(id=(unique(links$from)),label=(unique(links$from)),group='language')
+node2=data.frame(id=(unique(links$to)),label=(unique(links$to)), group='country')
+nodes=rbind(node1,node2)
+visNetwork(nodes, links, main='Extinct language and their geography')%>% 
+  visGroups(groupname = "language", color = "orange") %>% 
+  visGroups(groupname = "country", color = "blue")%>%
+  visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) 
+```

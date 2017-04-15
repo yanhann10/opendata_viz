@@ -1,0 +1,146 @@
++---
+title: "Oscars"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(gridExtra)
+library(plotly)
+library(viridis)
+library(ggthemes)
+oscars <- read_csv("~/git_repo/Oscars/oscars.csv")
+```
+
+First I filter for those actors and actress with winning history both 1 and NA
+
+
+```{r}
+winner_at_last <- oscars %>% 
+  filter(grepl("Actor",Award)|grepl("Actress", Award)) %>% 
+  select(Name, Winner, Year, Award)%>%
+  group_by(Name, Winner, Award) %>%
+  summarize(count=n())%>%
+  spread(Winner, count)%>%
+  na.omit() %>%
+  melt()
+
+```
+
+Then I look at how many years have passed in between their two consecutive nominations
+
+
+```{r}
+df <- oscars %>%
+  filter(Name %in% winner_at_last$Name) %>% 
+  group_by(Name) %>%
+  arrange(Name, Ceremony) %>%
+  mutate(gap = Ceremony - lag(Ceremony, 1)) %>%
+  mutate(gap = ifelse(is.na(gap),0,gap)) %>%
+  mutate(gap_sum = cumsum(gap))
+```
+
+Then I divided them into Actor groups and Actress groups. Each were eligible to win Lead actor/actress, supporting actor/actress, honorary award, special award and humanitarian award.
+
+```{r}
+Actor <- winner_at_last %>% filter(grepl("Actor",Award)) %>% distinct(Name)
+Actress <- winner_at_last %>% filter(grepl("Actress",Award)) %>% distinct(Name)
+```
+
+```{r, fig.width=5, fig.height=5}
+require(gridExtra)
+p1= df %>% 
+  filter(Name %in% Actor$Name) %>%
+  ggplot(aes(Name, gap_sum))+
+  geom_point(aes(col=factor(Winner), shape=Award))+
+  scale_fill_manual(values = c("red","grey"))+
+  coord_flip()+
+  labs(x = "Actors")+
+  theme_minimal() +
+  guides(color=FALSE)+
+  theme(legend.position="bottom")
+
+p2=df %>% filter(Name %in% Actress$Name) %>%
+  ggplot(aes(Name, gap_sum)) +
+  geom_point(aes(col=factor(Winner), shape=factor(Award)))+
+  scale_fill_manual(values = c("red","grey"))+
+  coord_flip()+
+  labs(x = "Actresses")+
+  theme_minimal()+
+  theme(legend.position="none") 
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+
+Then I look at who have been nominated the most times: none other than Meryl Streep!
+
+```{r}
+df %>% count(Name, sort=T) %>% head() %>% formattable(align="l")
+```
+
+
+```{r winmost}
+df %>% filter(Winner == 1)%>%
+  count(Name, sort=T) %>% head() %>% formattable(align="l")
+```
+
+
+Who have won the most times? Katharine Hepburn with 4 statuettes
+
+```{r}
+df %>% filter(Winner==1) %>% count(Name, sort=T) %>% head() %>% formattable(align="l")
+```
+
+Who are the ones recognized by the ceremony throughout decades of their careers?
+
+```{r}
+df %>% arrange(-gap_sum) %>% head() %>% formattable(align="l")
+```
+
+Who waited the longest between first nomination and actually winning for the 1st time?
+It's been 38 years before Alan Arkin and Jack Palance first won Actor in a supporting role.
+
+```{r}
+waittime <- df %>% mutate(Year = as.numeric(Year))%>%
+  filter(!is.na(Winner)) %>%
+  group_by(Name) %>%
+  filter(!duplicated(Winner==1)) %>% 
+  arrange(desc(gap_sum)) %>%
+  ungroup() %>%
+  mutate(first_nominated=Year-gap_sum, Name = reorder(Name, gap_sum)) %>%
+  head(10) 
+```
+
+```{r}
+waittime %>% mutate() %>% 
+    ggplot(aes(Name)) +
+    geom_linerange(aes(ymin = first_nominated, ymax = Year)) + 
+    geom_point(aes(y =first_nominated), color="darkorchid3", size=2) +
+    geom_point(aes(y = Year), color="yellowgreen",size=2.5, shape=8) + 
+  geom_text(aes(y=Year+3, label = gap_sum)) +
+  coord_flip()+
+    theme(legend.position = "None",
+          axis.title.x=element_blank(),
+      panel.grid.major.x = element_blank()) +
+  scale_y_continuous(breaks = seq(1950,2015,10)) +
+  ggtitle("Years From First Nominated to Finally winning") +
+   theme_tufte()
+```
+
+
+What kind of movie names tend to win?
+```{r}
+library(png)
+#img <- readPNG("~/git_repo/Oscars/oscars.png")
+```

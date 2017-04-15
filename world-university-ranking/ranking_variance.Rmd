@@ -1,0 +1,153 @@
+---
+title: "University ranking"
+output: html_document
+---
+```{r, warning = FALSE, error = FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(ggthemes)
+library(reshape2)
+```
+
+
+#Data 
+```{r, warning = FALSE, error = FALSE, message=FALSE}
+
+cwurData <- read.csv("~/R/Kaggle_Dataset/world-university-ranking/cwurData.csv", stringsAsFactors=FALSE)
+school_and_country_table <- read.csv("~/R/Kaggle_Dataset/world-university-ranking/school_and_country_table.csv", stringsAsFactors=FALSE)
+shanghaiData <- read.csv("~/R/Kaggle_Dataset/world-university-ranking/shanghaiData.csv", stringsAsFactors=FALSE)
+timesData <- read.csv("~/R/Kaggle_Dataset/world-university-ranking/timesData.csv", stringsAsFactors=FALSE)
+
+```
+
+Each of the Ranking data contains ranking across years
+
+```{r echo=FALSE, message=FALSE}
+table(cwurData$year)
+table(timesData$year)
+table(shanghaiData$year)
+```
+
+2012-2015 are the common years
+```{r}
+yr=2015
+```
+
+
+#Variance between universities
+```{r, warning = FALSE, error = FALSE, message=FALSE}
+RankDiff=cwurData%>%
+  filter(year==yr)%>%
+  select(institution,cwur_rank=world_rank)%>%
+  mutate(shanghai_rank=as.numeric(subset(shanghaiData,year==yr)$world_rank[match(institution,shanghaiData$university_name)]))%>%
+  mutate(times_rank=as.numeric(subset(timesData,year==yr)$world_rank[match(institution,timesData$university_name)]))%>%
+  mutate(country=school_and_country_table$country[match(institution,school_and_country_table$school_name)])%>%
+  rowwise()%>%
+  mutate(lowest_rank=(pmax(cwur_rank,times_rank,shanghai_rank)),
+    highest_rank=(pmin(cwur_rank,times_rank,shanghai_rank)))%>%
+  filter(!is.na(lowest_rank),!is.na(highest_rank))%>%
+  mutate(rank_diff=lowest_rank-highest_rank)
+```
+
+We could see that same university has different spelling in three ranking systems, resulting in NAs after the match.
+
+#Visualize the difference
+```{r}
+diff=ggplot(RankDiff,aes(RankDiff$lowest_rank,RankDiff$highest_rank,color=country))+
+  xlim(0,250)+ylim(0,250)+
+  geom_point()+geom_abline(slope=1,intercept=0)+
+  ggtitle('Max vs Min Rankings')+
+  theme_fivethirtyeight()
+```
+
+The further away from the line, the bigger the difference between lowest rank and highest rank. Universities from Austria, Sweden, Denmark have a bigger variance
+
+US not only has the most universities in the ranking, but also many with small variance across 3 systems
+
+Next we view these universities one by one 
+```{r, fig.width=10, fig.height=16}
+RankDiff%>%
+    ggplot(aes(institution)) +
+    geom_linerange(aes(ymin = highest_rank, ymax = lowest_rank,color=country)) + 
+    geom_point(aes(y = highest_rank, color=country)) +
+    geom_point(aes(y = lowest_rank, color=country)) + 
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks = element_blank())+
+    theme_classic()+coord_flip()
+```
+
+For all 3 rankings, what are their number of top 100 universities by country?
+```{r warning=FALSE}
+
+Top100bycountry<-function(x) {
+  result=x%>%
+    mutate(cntry=school_and_country_table$country[match(university_name,school_and_country_table$school_name)])%>%
+    filter(year==yr)%>%
+  head(100)%>%
+  group_by(cntry)%>%
+  tally()
+  return(result)
+}
+
+colnames(cwurData)[2] <- "university_name"
+
+cwur100=cwurData%>%Top100bycountry()
+times100=timesData%>%Top100bycountry()
+shanghai100=shanghaiData%>%Top100bycountry()
+
+p1=merge(cwur100,times100,by="cntry",all=TRUE)
+p2=merge(p1,shanghai100,by="cntry",all=TRUE)
+names(p2)=c("cntry","cwur_n","times_n","shanghai_n")
+p2%>%melt()%>%
+  filter(!is.na(cntry))%>%
+  ggplot(aes(cntry,value,fill=cntry))+
+  geom_bar(stat="identity")+coord_flip()+facet_wrap(~variable)+
+  geom_text(aes(label=value),nudge_y=2)+
+  theme_fivethirtyeight()+
+  ggtitle("Top 100 universities by country")+
+  guides(fill=FALSE)
+```
+
+And the animated version to show it across years
+```{r warning=FALSE}
+saveGIF(
+{
+    for (i=2012) {
+   
+      Top100bycountry<-function(x) {
+        result=x%>%
+          mutate(cntry=school_and_country_table$country[match(university_name,school_and_country_table$school_name)])%>%
+          filter(year==yr)%>%
+        head(100)%>%
+        group_by(cntry,year)%>%
+        tally()
+        return(result)
+      }
+
+colnames(cwurData)[2] <- "university_name"
+
+cwur100=cwurData%>%Top100bycountry()
+times100=timesData%>%Top100bycountry()
+shanghai100=shanghaiData%>%Top100bycountry()
+
+p1=merge(cwur100,times100,by=c("cntry","year"),all=TRUE)
+p2=merge(p1,shanghai100,by=c("cntry","year"),all=TRUE)
+names(p2)=c("cntry","year","cwur_n","times_n","shanghai_n")
+plt=p2%>%melt(id=c("cntry","year"))%>%
+  filter(!is.na(cntry))%>%
+  ggplot(aes(cntry,value,fill=cntry))+
+  geom_bar(stat="identity")+coord_flip()+facet_wrap(~variable)+
+  geom_text(aes(label=value),nudge_y=2)+
+  theme_fivethirtyeight()+
+  ggtitle("Top 100 universities by country")+
+  guides(fill=FALSE)
+print(plt)
+
+    }
+}
+, movie.name = "gifname_.gif", interval = runif(30, 0.01, 1), nmax = 30,
+ani.width=850, ani.height=500)
+```

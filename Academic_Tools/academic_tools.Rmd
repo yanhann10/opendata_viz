@@ -1,0 +1,114 @@
+
+---
+title: "Academic Tools"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(formattable)
+library(RColorBrewer)
+library(vcd)
+col=rev(brewer.pal(10,'PiYG'))
+survey_cleaned <- read.csv("~/Downloads/101-innovations-research-tools-survey/survey_cleaned.csv", stringsAsFactors=FALSE)
+survey_cleaned$PUBYEAR=as.factor(survey_cleaned$PUBYEAR)
+levels(survey_cleaned$PUBYEAR)=c("","before 1991","1991-2000","2001-2005","2006-2010","2011-2016","I haven't published (yet)")
+```
+Who were surveyed?
+```{r}
+survey_cleaned%>%
+  group_by(ROLE)%>%
+  summarise(count=n())%>%
+  arrange(desc(count))%>%
+  formattable(
+    list(count = color_bar("pink",0.1)),
+    align = 'l') 
+```
+Anyone cross-disciplinary?
+```{r}
+quantify=function(x) ifelse(nchar(x) > 0, 1, 0)
+
+survey=survey_cleaned%>%
+  mutate_each(funs(quantify),PHYS:ARTHUM)%>%
+  mutate(totalfield=rowSums(.[5:11])) 
+
+prop.table(table(survey$totalfield))
+```
+
+83% work in one academic field while 17% are cross-disciplinary.  
+And there are people crossing all 7 fields, including librarians and publishers
+
+Next we study only single-field academics and consolidate all academic field to one column, and filter for professors as others may have uneven level of skills and tool usage
+```{r}
+survey=survey%>%
+  filter(totalfield==1)
+df2=survey%>%
+  select(PHYS:ARTHUM)
+whichfield=function(x) colnames(df2)[[which(x==1)]]
+df2$field=apply(df2,1,whichfield)
+
+df3=df2%>%
+  select(-c(1:7))%>%
+  bind_cols(survey)%>%
+  filter(ROLE=='Professor / Associate professor / Assistant professor')
+```
+
+Which fields has the most records
+```{r}
+freqfield=df3%>%
+  group_by(field,PUBYEAR)%>%
+  summarize(num=n())%>%
+  arrange(desc(num))
+```
+Count number of tool usage
+```{r}
+toolset=df3%>%
+  select(-matches("SPECCL"))%>%
+  mutate_each(funs(quantify),GSCHOLSEARCH:IMPACTOTHCL)%>%
+  select(c(field,PUBYEAR,GSCHOLSEARCH:IMPACTOTHCL))%>%
+  filter(PUBYEAR!="")%>%
+  group_by(field,PUBYEAR)%>%
+  mutate_each(funs(sum))%>%
+  melt(id=c("field","PUBYEAR"))%>%
+  left_join(freqfield,by=c('field','PUBYEAR'))%>%
+  mutate(freq=value/num)
+head(toolset)  
+```  
+Visualize tools used by academic field
+```{r,fig.width=12,fig.height=20}
+ggplot(toolset, aes(field,variable)) + 
+geom_tile(aes(fill = freq), colour = "white") +facet_grid(~PUBYEAR)+
+scale_fill_gradientn(colours = col)+ 
+coord_fixed(ratio = 1)+
+theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
+theme(axis.title.y=element_blank(),axis.title.x=element_blank())
+```
+
+Prevalent tools used by all include word, Acrobat PDF Reader, Insitutional Access, Google Scholar. Excel is also common except in Law.  
+Now to industry-specific tools:  
+* PubMed is commonly used in Life science and Medicine.  
+* ResearchGate is used by all but less often in Arts and Law.  
+* Engineering use more Matlab than the rest, while Med and Social sciences use SPSS.
+* Engineering and Physics uses more Latex.  
+* Law uses SSRN relatively frequently, while Physics is the most frequent user of ARXIV.  
+
+Lastly we look at their atitude towards open access and open science
+```{r}
+Attitude=df3%>%
+    select(OPENSCI,OPENACC)%>%
+    filter(OPENACC!=""&OPENSCI!='')%>%
+    table()
+mosaicplot(Attitude,color =brewer.pal(3,"PiYG"))
+```
+Majority are supportive of both, let's see who's opposing them
+```{r}
+naysayer=df3%>%
+  filter(OPENACC=="No"&OPENSCI=='No')%>%
+  select(PUBYEAR,field)%>%
+  table()
+tbl=cbind(naysayer=naysayer%>%colSums(),freqfield%>%group_by(field)%>%summarize(sum(num)))
+tbl[1]/tbl[3]
+```
+Only 1-3% of professor from each field oppose the open initiative

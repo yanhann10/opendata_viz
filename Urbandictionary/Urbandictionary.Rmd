@@ -1,0 +1,103 @@
+---
+title: "Urbandictionary"
+output: html_document
+---
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(ggplot2) # Data visualization
+library(ggrepel)
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(plotly)
+library(viridis)
+
+```
+
+```{r}
+#data from https://www.kaggle.com/athontz/urban-dictionary-terms
+ df <- read_csv("~/git_repo/Urbandictionary/urban_dictionary.csv") %>%
+  mutate(year = year(mdy(date)))
+
+```
+```{r}
+p <- df %>% ggplot(aes(log10(up), log10(down))) + 
+  geom_point(alpha=0.05, col="pink") + 
+geom_density2d(col="lightblue")+
+#geom_text(aes(label=ifelse(up>=30000|down>=20000,word,'')),hjust=0,just=0)
+ggtitle("Upvotes vs downvotes") + 
+  theme_minimal() + 
+  theme(legend.position="None") + 
+  coord_equal() 
+ggplotly(p)
+```
+
+Many words have thousands of up and down votes.
+
+#what are the words with highest up votes
+```{r}
+up <- df %>% arrange(desc(up))%>%
+  group_by(year) %>% select(word, votes=up, definition) %>% 
+  slice(1)
+```
+#what are the words with highest down votes
+```{r}
+down <- df %>% arrange(desc(down))%>%
+  group_by(year) %>% mutate(votes=-down) %>%select(word, votes, definition) %>% 
+  slice(1)
+```
+```{r}
+p <- rbind(up, down) %>%
+  ggplot(aes(year, votes, text = definition)) + 
+  geom_point(aes(col = (votes > 0))) +
+  geom_text_repel(aes(label = ifelse(votes>20000|votes<(-15000), word,""))) +
+  ggtitle("Words with most upvotes and downvotes by year") +
+  theme_minimal() +
+  theme(legend.position = "None") + 
+  geom_hline(yintercept = 0)
+ggplotly(p)
+```
+
+
+```{r}
+# dist_m <- adist(df$word, partial = TRUE)
+# library(reshape2)
+# pairs= subset(melt(dist_m), value <=10)
+```
+
+```{r commontags}
+df %>% select(year, tags)%>%
+  mutate(tags = gsub("\\[|\\]|u'|'","", tags)) %>%
+  mutate(tag = strsplit(tags, ",")) %>% 
+  unnest() %>%
+  group_by(tag) %>%
+  summarize(n = n()) %>%
+  arrange(desc(n)) %>%
+  head(10)
+```
+This roughly described the content of urban dictionary words.
+
+There are quite a few words in reent years with 'trump as part of the word. 
+```{r}
+p <- df %>% 
+  filter(grepl("trump", word)) %>% 
+  ggplot(aes(up, down, text = definition)) + 
+geom_point(aes(colour = word)) + 
+geom_text_repel(aes(label=word)) +
+ggtitle("Upvotes vs downvotes") + 
+  theme_minimal()  + 
+  theme(legend.position='None') 
+ggplotly(p)
+```
+
+```{r}
+word_m=stringdistmatrix(df$word, method = 'qgram', q = 2, useNames = TRUE)
+
+```
+

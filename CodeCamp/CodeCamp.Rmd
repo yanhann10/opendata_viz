@@ -1,0 +1,191 @@
+---
+title: "How people learn to code"
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(plotly)
+library(viridis)
+
+```
+
+```{r message=FALSE}
+df<- read.csv("~/R/Kaggle_Dataset/CodeCamp.csv", stringsAsFactors=FALSE)
+glimpse(df)
+```
+#Demographics
+Some basic demographics: gender and age mix
+```{r warning=FALSE, message=FALSE ,echo=FALSE}
+df%>%select(Age, Gender)%>%
+group_by(Age, Gender)%>%
+summarize(count=n())%>%
+ggplot(aes(Age,count,fill=Gender))+
+geom_bar(stat='identity',position='stack',color='white')+theme_classic()
+```
+
+The surveyed has median age of 27, more male than female
+
+Let's see if the gender mix change across ages
+```{r warning=FALSE , message=FALSE ,echo=FALSE}
+df%>%select(Age, Gender)%>%
+group_by(Age, Gender)%>%
+summarize(count=n())%>%
+ggplot(aes(Age,count,fill=Gender))+
+geom_bar(stat='identity',position='fill',color='white')+xlim(c(10,70))+
+theme_classic()
+```
+There are increasing percentage of older female coding.
+
+What are the top countries people live in
+
+```{r echo=FALSE}
+topcntry=df%>%select(CountryLive)%>%
+group_by(CountryLive)%>%
+filter(!is.na(CountryLive))%>%
+summarize(ncount=n())%>%
+arrange(desc(ncount))%>%
+head()%>%
+select(CountryLive)
+
+df$CityPopulation=factor(df$CityPopulation,levels=c("less than 100,000","between 100,000 and 1 million","more than 1 million"))
+
+df%>%select(CountryLive,CityPopulation )%>%
+filter(CountryLive%in%as.list(topcntry)[[1]])%>%
+filter(!is.na(CityPopulation))%>%
+group_by(CountryLive, CityPopulation )%>%
+summarize(ncount=n())%>%
+spread(CityPopulation,ncount)%>%
+formattable()
+```
+
+Based on residential country, 46% of the surveyed live in US
+36% are from cities with between 100K to 1M people, while 40% are from big cities with more than 1 milion people.
+
+#Socio-economic profile
+The surveyed has median income of 37K, minimally 6K, maximally 20K.
+
+In terms of hours of learning, how are people of different income group behave differently?
+```{r echo=FALSE, warning=FALSE}
+df%>%
+  mutate(Incomecut=cut(Income,seq(0,200000,50000)))%>%
+  select(HoursLearning,Incomecut)%>%
+  filter(!is.na(Incomecut))%>%
+  ggplot(aes(HoursLearning,fill=Incomecut))+geom_density(alpha=0.5)+
+  facet_wrap(~Incomecut,nrow=2)+
+  ggtitle('Learning hours by income group')+theme_classic()
+```
+
+
+#Career
+67 % of those attended bootcamp finished them.  58 % of those finish bootcamp had full-time job afterwards.
+```{r echo=FALSE, message=FALSE}
+paste(round(sum(df$BootcampFinish,na.rm=TRUE)/sum(df$AttendedBootcamp,na.rm=TRUE),2)*100, "%of those attended bootcamp finished them. ", round(sum(df$BootcampFullJobAfter,na.rm=TRUE)/sum(df$BootcampFinish,na.rm=TRUE),2)*100, "% of those finish bootcamp had full-time job afterwards. Some of the rest may not have filled survey")
+```
+What are the job fields and employment status for participant
+```{r echo=FALSE}
+df%>%
+  filter(AttendedBootcamp==1)%>%
+  select(EmploymentField,EmploymentStatus)%>%
+  filter(!is.na(EmploymentField),!is.na(EmploymentStatus))%>%
+  group_by(EmploymentField,EmploymentStatus)%>%
+  summarize(ncount=n())%>%
+  arrange(ncount)%>%
+  ggplot(aes(EmploymentField,ncount,fill=EmploymentStatus))+
+  geom_bar(stat='identity',position='stack',color='white')+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
+  ggtitle('Employment status and field among Bootcamp participants')+
+  coord_flip()+theme_classic()
+```
+
+Majority are employed for wages and working in software development and IT. Participants also come from in sales, education, finance, media etc.
+
+Next we'll how are people's current job differ from their ideal job
+```{r echo=FALSE}
+as.data.frame(table(df$EmploymentStatus,df$JobPref))%>%
+  select(current=Var1,ideal=Var2,Freq)%>%
+  ggplot(aes(ideal, current))+
+  geom_tile(aes(fill = Freq), colour = "white")+
+  scale_fill_viridis()+ 
+  coord_fixed(ratio = 1)+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+```
+
+So lots of people employeed for wages want changes, either work for a medium-sized company, or start-up, freelance, etc
+
+
+#Online Resources for learning coding
+Let's see what resources they use to learn online
+```{r echo=FALSE}
+online=df%>%select(matches('Resource'))%>%
+  select(-ResourceOther)
+data.frame(name=substring(names(online),9), #extract names
+                        count=colSums(online,na.rm=TRUE),row.names=NULL)%>%
+  arrange(desc(count))%>%
+  formattable(list(count = color_bar("lightgreen",0)),
+    align = 'l')
+```
+
+It appears Freecodecamp, Codeacademy, Udemy, Udacity, Coursera, Edx, Khan Academy and PluralSight are among popular resources
+
+#Coding Events
+Next let's see what Code events people join
+
+```{r echo=FALSE, message=FALSE}
+codeevent=df%>%select(matches('CodeEvent'))%>%
+  select(-CodeEventOther)
+data.frame(name=substring(names(codeevent),10), #extract names
+                        count=colSums(codeevent,na.rm=TRUE),row.names=NULL)%>%
+  arrange(desc(count))%>%
+  formattable(list(count = color_bar("lightblue",0)),
+    align = 'l')
+```
+
+It appears conference, coffee  and hackathon are among the top code events.
+
+#Coding podcast
+What podcast do they listen to?
+```{r echo=FALSE, message=FALSE}
+podcast=df%>%select(matches('Podcast'))%>%
+  select(-PodcastOther)
+data.frame(name=substring(names(podcast),8), #extract names
+                        count=colSums(podcast,na.rm=TRUE),row.names=NULL)%>%
+  arrange(desc(count))%>%
+  formattable(list(count = color_bar("pink",0)),
+    align = 'l')
+
+```
+
+JS Jabber, Code Newbie and SE Daily sounds fun
+
+#Bootcamp
+What are the bootcamps people attend and do people recommend it
+
+```{r message=FALSE, echo=FALSE}
+df%>%
+  filter(!is.na(BootcampName))%>%
+  select(BootcampName,BootcampRecommend)%>%
+  filter(!grepl("Free Code", BootcampName))%>%
+  group_by(BootcampName)%>%
+  filter(!is.na(BootcampRecommend))%>%
+  summarize(recommendpct=percent(sum(BootcampRecommend)/n(),digits=0),
+            attendee=n())%>%
+  arrange(desc(attendee),desc(recommendpct))%>%
+  formattable(list(attendee= color_bar("lightblue",0),
+            recommendpct=formatter("span",
+    style = x ~ ifelse(x >=0.5, "color:green","color:red"))    
+                   ), align = 'l')
+```
+
+GA has most attendees yet 22% don't recommend it, Flatiron comes next with high recommendation rate. This is an interesting list of bootcamps, useful for informing bootcamp attending decision as well
+

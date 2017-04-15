@@ -1,0 +1,197 @@
+---
+title: "H1B"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=F, warning=F}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(lubridate)
+library(tidytext)
+library(devtools)
+library(formattable)
+library(stringr)
+library(plotly)
+library(wordcloud)
+library(tm)
+library(qdap)
+library(leaflet)
+library(gsubfn)
+```
+
+## Load data
+
+```{r input, include=FALSE, message=F, warning=F}
+df <- read_csv("h1b_kaggle.csv")
+df$X1 <- NULL
+```
+
+```{r pre_process}
+data_related <- "DATA|MACHINE LEARNING|STATISTIC|BUSINESS ANALYST"
+df_data_related <- df %>% filter(grepl(data_related, JOB_TITLE))
+```
+
+```{r word}
+freq_terms(df_data_related$JOB_TITLE,10)
+```
+
+## Data visualization
+
+```{r processing}
+df_job <- df_data_related %>% 
+  mutate(job = ifelse(str_detect(JOB_TITLE, "SCIENTIST"),"SCIENTIST",
+               ifelse(str_detect(JOB_TITLE, "ARCHITECT"),"ARCHITECT",
+               ifelse(str_detect(JOB_TITLE, "WAREHOUSE"),"DBA",
+               ifelse(str_detect(JOB_TITLE, "DATABASE"),"DBA",
+               ifelse(str_detect(JOB_TITLE, "DBA"),"DBA",
+               ifelse(str_detect(JOB_TITLE, "ADMINISTRATOR"),"DBA",
+               ifelse(str_detect(JOB_TITLE, "ANALYST"),"ANALYST",
+               ifelse(str_detect(JOB_TITLE, "ENGINEER"),"ENGINEER",
+               ifelse(str_detect(JOB_TITLE, "DEVELOPER"),"DEVELOPER",
+               ifelse(str_detect(JOB_TITLE, "PROGRAMMER"),"DEVELOPER",
+               ifelse(str_detect(JOB_TITLE, "ADVISOR"),"CONSULTANT",
+               ifelse(str_detect(JOB_TITLE, "CONSULTANT"),"CONSULTANT",
+               ifelse(str_detect(JOB_TITLE, "STATISTIC"),"STATISTICIAN",
+               ifelse(str_detect(JOB_TITLE, "RESEARCH"),"RESEARCHER",
+                      "OTHERS")))))))))))))))%>%
+  mutate(level = ifelse(str_detect(JOB_TITLE, "MANAGER"),"MANAGER",
+                  ifelse(str_detect(JOB_TITLE, "SENIOR"),"SENIOR",
+                  ifelse(str_detect(JOB_TITLE, "PRINCIPAL"),"PRINCIPAL",
+                  ifelse(str_detect(JOB_TITLE, "SR"),"SENIOR",
+                  ifelse(str_detect(JOB_TITLE, "DIRECTOR"),"DIRECTOR",
+                  ifelse(str_detect(JOB_TITLE, "VP"),"VP",
+                  ifelse(str_detect(JOB_TITLE, "VICE PRESIDENT"),"VP",
+                  ifelse(str_detect(JOB_TITLE, "LEAD"),"LEAD",
+                  ifelse(str_detect(JOB_TITLE, "ASSOCIATE"),"ASSOCIATE",
+                  ifelse(str_detect(JOB_TITLE, "SPECIALIST"),"SPECIALIST",
+                  ifelse(str_detect(JOB_TITLE, "JUNIOR"),"JUNIOR",
+                  "UNSPECIFIED"))))))))))))
+table(df_job$job, df_job$level)
+J2= df_job%>%filter(job=="OTHERS", grepl("ANALYTICS", JOB_TITLE)) 
+freq_terms(J2$JOB_TITLE,30)
+temp=as.data.frame(table(J2$JOB_TITLE))
+```
+
+
+
+```{r function}
+salarygroup <- function(i) {
+  df_job %>% filter(PREVAILING_WAGE<=200000) %>%
+  group_by_("YEAR", i) %>%
+  summarise(median_wage = median(PREVAILING_WAGE), min_wage = min(PREVAILING_WAGE),
+            max_wage = max(PREVAILING_WAGE)) 
+}
+
+```
+```{r testing}
+# salarygroup("job") %>%
+#   ggplot(aes(y=median_wage, x=YEAR)) + geom_line() +
+#    geom_ribbon(aes(ymin=min_wage, ymax=max_wage, x=YEAR, fill = ~job), alpha = 0.6) +   
+#   facet_wrap(i, nrow=2) + 
+#   theme_minimal() + 
+#   theme(legend.position="None", axis.text.x=element_text(angle=90,hjust=1,vjust=0.5),
+#         axis.title.y=element_blank(),axis.title.x=element_blank()) +
+#   ggtitle("Salary band by profession") 
+```
+
+##visualizing
+
+```{r job}
+p1 <- salarygroup("job") %>%
+  mutate(level=reorder(job, median_wage, median))%>%
+  ggplot(aes(y=median_wage, x=YEAR)) + geom_line() +
+   geom_ribbon(aes(ymin=min_wage, ymax=max_wage, x=YEAR, fill = job), alpha = 0.6) +   
+  facet_wrap(~job, nrow=2) + 
+  theme_minimal() + 
+  theme(legend.position="None", axis.text.x=element_text(angle=90,hjust=1,vjust=0.5),
+        axis.title.y=element_blank(),axis.title.x=element_blank(),
+        plot.title = element_text(face="bold")) +
+  ggtitle("Salary band by profession") 
+ggplotly(p1)
+
+```
+```{r level}
+p2 <- salarygroup("level") %>% 
+  mutate(level=reorder(level, median_wage, median))%>%
+  ggplot(aes(y=median_wage, x=YEAR)) + geom_line() +
+   geom_ribbon(aes(ymin=min_wage, ymax=max_wage, x=YEAR, fill = level), alpha = 0.6) +   
+  facet_wrap(~level, nrow=2) + 
+  theme_minimal() + 
+  theme(legend.position="None", axis.text.x=element_text(angle=90,hjust=1,vjust=0.5),
+        axis.title.y=element_blank(),axis.title.x=element_blank(),
+        plot.title = element_text(face="bold")) +
+  ggtitle("Salary band by level") 
+ggplotly(p2)
+```
+
+```{r company}
+#among companies that employ scientist
+# top5co <- df_job %>% filter(job=="SCIENTIST") %>%
+#   group_by(EMPLOYER_NAME) %>%
+#   summarize(median_wage = median(PREVAILING_WAGE)) %>%
+#   arrange(-median_wage) %>% 
+#   head() %>%
+#   select(EMPLOYER_NAME)
+```
+
+##Number of H1B by status by job
+```{r vol}
+df_job %>% group_by(job, YEAR, CASE_STATUS) %>% 
+  summarize(n=n()) %>% 
+  ggplot(aes(YEAR, n, fill=CASE_STATUS)) + 
+  geom_bar(stat="identity", alpha = 0.8,colour="white") + 
+  facet_wrap(~job, nrow=2) +
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5),
+        axis.title.y=element_blank(),axis.title.x=element_blank(),
+        legend.position = "bottom",legend.title = element_blank(),
+        plot.title = element_text(face="bold",hjust = 0.5)) +
+  scale_colour_brewer(palette = "Spectral") +
+  ggtitle("Number of H1-B petitions")
+ 
+```
+
+```{r state}
+df_state <- df_job %>% 
+  separate(WORKSITE,c("city","state"),sep=',')%>%
+  group_by(job, state) %>%
+  summarize(n=n())
+
+```
+
+
+
+```{r geo}
+library(viridis)
+jobpal = colorFactor(viridis(10),df_job$job)
+lvlpal = colorFactor(viridis(10,option="plasma"), df_job$level)
+leaflet(data = filter(df_job, !is.na(lat),!is.na(lon),str_detect(df_job$CASE_STATUS,"CERTIFIED"))) %>% 
+  addProviderTiles("Stamen.TonerLite") %>% 
+  setView(lng = -110, lat = 25, zoom = 3) %>%
+  addCircleMarkers(~lon, ~lat, stroke = FALSE, 
+                   fillOpacity = 0.3, 
+                   radius=2.5, 
+                   popup = ~EMPLOYER_NAME, 
+                   color = ~jobpal(job)) %>%
+  addCircleMarkers(~lon, ~lat, stroke = FALSE, 
+                   fillOpacity = 0.3, 
+                   radius=2.5, 
+                   popup = ~EMPLOYER_NAME, 
+                   color = ~lvlpal(level)) %>%
+  addLayersControl(
+    baseGroups = c("job", "level"),
+    options = layersControlOptions(collapsed = FALSE)
+  )%>% 
+  addLegend("topleft", pal = jobpal, values = df_job$job, 
+    title = "Job", opacity = .8)%>% 
+  addLegend("topleft", pal = lvlpal, values = df_job$level, 
+    title = "Level", opacity = .8)
+```
+
+
+## Takeaways

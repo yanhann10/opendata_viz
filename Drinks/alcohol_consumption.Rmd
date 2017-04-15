@@ -1,0 +1,157 @@
+---
+title: "A look into world alcohol consumption"
+output: html_document
+---
+```{r echo=F, message=F, warning=F}
+library(rworldmap)
+library(countrycode)
+library(fivethirtyeight)
+library(formattable)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggraph)
+library(plotly)
+data(package = "fivethirtyeight")
+drinks=as.data.frame(drinks)
+alcohol <-c("beer_servings","spirit_servings", "wine_servings","total_litres_of_pure_alcohol")
+drinks$code = countrycode(drinks$country, 'country.name', 'iso3c')
+#could convert to country/region/continent
+drinks$continent = countrycode(drinks$country, 'country.name', 'continent')
+```
+
+```{r echo=F, message=F, warning=F}
+regionalconsumption <- function(i) {country2Region(inFile=drinks
+		,nameDataColumn=i
+		,joinCode="ISO3"
+		,nameJoinColumn="code"
+		,regionType="Stern"
+		,FUN='mean'
+		)
+}
+```
+
+## Consumption by region {.tabset}
+
+### Overview
+```{r}
+
+plot_ly(drinks, x = ~beer_servings, y = ~spirit_servings, z = ~wine_servings, 
+             size=~total_litres_of_pure_alcohol, color = ~continent,
+             marker = list(symbol = 'circle', sizemode = 'diameter'), 
+        sizes = c(1, 20)) %>%
+       add_markers() 
+```
+
+### Beer
+```{r}
+beer<- cbind(region = rownames(regionalconsumption("beer_servings")), regionalconsumption("beer_servings")) %>%mutate(row.names=NULL) %>% arrange(-meanbeer_servingsbyStern) %>% rename(beer_serving=meanbeer_servingsbyStern) %>% mutate(beer_serving=round(beer_serving)) 
+beer %>% formattable(align="l")
+```
+### Spirtis
+```{r, echo=FALSE}
+
+spirits <- cbind(region = rownames(regionalconsumption("spirit_servings")), regionalconsumption("spirit_servings")) %>%mutate(row.names=NULL) %>% arrange(-meanspirit_servingsbyStern) %>% rename(spirit_serving=meanspirit_servingsbyStern) %>% mutate(spirit_serving=round(spirit_serving))
+spirits%>% formattable(align="l")
+```
+### Wine
+```{r, echo=FALSE}
+
+wine <- cbind(region = rownames(regionalconsumption("wine_servings")), regionalconsumption("wine_servings")) %>%mutate(row.names=NULL) %>% arrange(-meanwine_servingsbyStern) %>% rename(wine_serving=meanwine_servingsbyStern) %>% mutate(wine_serving=round(wine_serving))
+wine %>%formattable(align="l")
+```
+
+## Comparison by region and continents {.tabset}
+
+###by region
+```{r slopgraph,echo=F}
+joined_df <- beer %>% 
+  left_join(spirits, by = "region") %>%
+  left_join(wine, by = "region") %>% 
+  gather(alcohol, serving, - region) %>% 
+  separate(alcohol,into = c( "drink","serving"),"_")
+
+joined_df %>% 
+  ggplot(aes(x=drink, y=serving,group=region, col=region)) +
+  geom_line(size=1.5) +
+  geom_text(data = subset(joined_df, drink == "beer"), aes(label=region),hjust = 1) + theme_minimal() + theme(legend.position = "none")
+```
+
+###by continent
+```{r continent,echo=F}
+drinks %>% select(-c(code, region, total_litres_of_pure_alcohol)) %>%
+  gather(alcohol, serving, - c(continent,country)) %>%
+  separate(alcohol,into = c( "drink","servings"),"_") %>% 
+  select(-servings) %>% 
+  group_by(continent, drink) %>% 
+  summarize(serving=sum(serving)) %>% 
+  ggplot(aes(x=drink, y=serving, group=continent, fill=continent)) +
+  geom_bar(stat="identity", position="dodge") + 
+  ggtitle("alcohol consumption by continent") +
+  theme_minimal()
+```
+
+### Map view
+```{r echo=F, message=F, warning=F}
+#how to adjust color scale
+
+map_drink <- joinCountryData2Map(drinks, joinCode = "NAME", nameJoinColumn = "country", verbose = TRUE)
+
+mapCountryData(map_drink, nameColumnToPlot="wine_servings")
+
+library(animation)
+saveGIF(
+{
+    for (i in alcohol) {
+         mapCountryData(map_drink, nameColumnToPlot=i)
+     }
+}
+, movie.name = "alcohol.gif", interval = 2.5, nmax = 10,
+ani.width=850, ani.height=500)
+
+```
+
+## Clustering
+
+```{r hclust, warning=F, message=F, echo=F}
+row.names(drinks)=drinks$country
+# text label messy
+# drinksDen <- as.dendrogram(hclust(dist(drinks[2:4], method='euclidean'), 
+#                                 method='ward.D2'))
+# ggraph(graph = drinksDen, layout = 'dendrogram', repel = TRUE, circular = TRUE,
+#        ratio = 0.5) +
+#   geom_edge_elbow() +
+#   geom_node_text(aes(x = x*1.15, y=y*1.15, filter=leaf, 
+#                      angle = node_angle(x, y), label = label), 
+#                  size=1.2, hjust='outward') +
+#   geom_node_point(aes(filter=leaf)) +
+#   coord_fixed() +
+#   ggforce::theme_no_axes()
+#learnt: 
+# 1. as.dendrogram makes the hclust a dendrogram ojbect
+# 2. node_angle enables radial label
+# 3. repel = TRUE in geom_node_text outside of aes() repeal text but results can be mad
+# how to color by continents
+library("ape")
+library(RColorBrewer)
+hc=hclust(dist(drinks[2:4], method='euclidean'), 
+          method='ward.D2')
+cols<-brewer.pal(n=6,name="Dark2")
+plot(as.phylo(hc), type = "fan",cex = 0.5, tip.color = cols[cutree(hc,6)])
+```
+
+
+```{r d3heatmap, echo=F, message=F}
+# library(d3heatmap)
+# drinks2=drinks
+# drinks2$row.name=drinks2$country
+# drinks2$country<-NULL
+# drinks2$total_litres_of_pure_alcohol<-NULL
+# d3heatmap(drinks2, dendrogram="column")
+```
+
+
+
+
+

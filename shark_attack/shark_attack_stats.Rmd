@@ -1,0 +1,183 @@
+---
+title: "Shark Attack"
+output:
+  pdf_document: default
+  html_notebook: default
+  html_document: default
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(formattable)
+library(RColorBrewer)
+library(ggthemes)
+library(tidytext)
+library(lubridate)
+attacks <- read_csv("attacks.csv")
+```
+
+###Preprocessing
+```{r  message=FALSE, warning=FALSE, echo=FALSE}
+
+attacks <- attacks %>%
+  mutate(Date = dmy(Date))%>%
+mutate(fatality=ifelse(`Fatal (Y/N)`=='Y',1,0))%>%
+mutate(Injury_Type = ifelse(
+  is.na(Injury), "NA",
+  ifelse(grepl("bitten", Injury, ignore.case = T),"Bitten",
+  ifelse(grepl("Laceration", Injury, ignore.case = T), "Lacerations", 
+  ifelse(grepl("Minor injury", Injury, ignore.case = T), "Injured",
+  ifelse(grepl("Injured", Injury, ignore.case = T), "Injured",
+  ifelse(grepl("Injuries", Injury, ignore.case = T), "Injured",
+  ifelse(grepl("No injury", Injury, ignore.case = T), "No Injury",
+  ifelse(grepl("Disappeared", Injury, ignore.case = T), "Disappeared",      
+  ifelse(grepl("FATAL", Injury, ignore.case = T), "Fatal", "Others")))))))))) %>%
+mutate(Activity_Type = ifelse(
+  is.na(Activity),"NA",
+  ifelse(grepl("Surf.*", Activity, ignore.case = T),"Surfing",
+  ifelse(grepl("Swim.*", Activity, ignore.case = T), "Swimming", 
+  ifelse(grepl("Fishing", Activity, ignore.case = T), "Fishing",
+  ifelse(grepl("Bath.*", Activity, ignore.case = T), "Bathing",
+  ifelse(grepl("Wading", Activity, ignore.case = T), "Wading",
+  ifelse(grepl("Diving", Activity, ignore.case = T), "Diving",
+  ifelse(grepl("Standing", Activity, ignore.case = T), "Standing",      
+  ifelse(grepl("Snorkel+ing", Activity, ignore.case = T), "Snorkelling", "Others"))))))))))
+```
+
+##Visualize by attack scenarios
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=4}
+attacks %>%
+  count(Type, sort=T) %>%
+  mutate(Type=reorder(Type,n))%>%
+  ggplot(aes(Type,n)) +
+  geom_bar(stat='identity',color='white') + 
+  coord_flip() +
+  geom_text(aes(label=n,hjust=-0.1)) + 
+  theme_minimal() + 
+  ggtitle('Shark Attack Scenarios') 
+```
+
+##Visualize by top activities
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=4}
+attacks %>%
+  count(Activity_Type, sort=TRUE) %>%
+  mutate(Activity_Type=reorder(Activity_Type,n))%>%
+  ggplot(aes(Activity_Type,n)) +
+  geom_bar(stat='identity',color='white') + 
+  coord_flip() +
+  geom_text(aes(label=n,hjust=-0.1)) + 
+  theme_minimal() + 
+  theme(axis.text=element_text(size=16)) +
+  ggtitle('Shark Attack by Activities') 
+
+```
+
+Surfing, Swimming and Fishing appear to be the main triggering activities, let's figure out what's in the others (which got covered up in the sentences) by tokenize them
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=6}
+library(tidytext)
+attacks%>%
+  filter(Activity_Type=='Others')%>%
+  select(Activity)%>%
+  unnest_tokens(Word, Activity)%>% 
+  anti_join(stop_words, c(Word = "word")) %>%
+  count(Word, sort = TRUE)%>%
+  mutate(Word=reorder(Word,n))%>%
+  head(50)%>%
+  ggplot(aes(Word, n)) +
+  geom_bar(stat = "identity") + 
+  coord_flip() + 
+  geom_text(aes(label=n,hjust=-0.1)) + 
+  theme_minimal() 
+```
+
+From this chart we can see there's no other activities with more incident than snorkelling, so we can safely store them in 'others' bucket.
+
+
+##Visualize by injury type
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, fig.width=6, fig.height=4}
+attacks %>%
+  count(Injury_Type, sort=TRUE) %>%
+  mutate(Injury_Type=reorder(Injury_Type,n))%>%
+  ggplot(aes(Injury_Type,n)) +
+  geom_bar(stat='identity',color='white') + 
+  coord_flip() +
+  geom_text(aes(label=n,hjust=-0.1)) + 
+  theme_minimal() + 
+  theme(axis.text=element_text(size=16)) +
+  ggtitle('Shark Attack by Injury Type') 
+  
+```
+
+##What's the relation between activity and injury?
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, fig.width=4.6, fig.height=4.6}
+attack_activity_injury <- attacks %>%
+  group_by(Activity_Type, Injury_Type)%>%
+  summarize(count=n(), fatality_rate=sum(fatality, na.rm=TRUE)/n())
+attack_activity_injury%>%
+  ggplot(aes(Activity_Type, Injury_Type)) + 
+  geom_point(aes(size = count, colour=fatality_rate)) + 
+  scale_colour_gradientn(colours=c("#88d8b0","#ff6f69")) + 
+  ggtitle("Shark attack incidences by activity and injury type") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme_minimal() + theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(), legend.position="right")
+```
+## And exactly where in the world do those attacks occur? 
+```{r}
+attack_by_top_country <- attacks %>%
+  count(Country,sort=TRUE)%>%
+  head(100)
+attack_by_top_country
+```
+Get their geocode and do something big
+
+```{r}
+attack_by_country <- attacks %>%
+  filter(!is.na(Country))%>%
+   group_by(Country,Year, Activity_Type, fatality) %>%
+   summarize(n = n())
+# geocodes <- geocode((attack_by_country$Country))
+# geolocation <-data.frame(attack_by_country,geocodes)
+```
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(leaflet)
+library(ggmap)
+attack_by_country <- attacks %>%
+  filter(!is.na(Country))%>%
+  count(Country,sort=TRUE)
+geocodes <- geocode((attack_by_country$Country))
+geolocation <-data.frame(attack_by_country[,1:2],geocodes)
+geolocation%>%
+  leaflet() %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addPolygons(lng = ~lon, lat = ~lat, 
+             popup = ~Country, fillColor = ~n)
+```
+
+
+How do shark attacks vary over the year
+```{r message=FALSE, warning=FALSE, echo=FALSE, fig.width=4.6, fig.height=3}
+attacks %>%
+  filter(Year>1800, Country%in%attack_by_country$Country)%>%
+  group_by(Year, Country, fatality)%>%
+  summarize(count=n())%>%
+  ggplot(aes(Year,count, color=factor(fatality))) +
+  geom_point(size=1, alpha=0.6) + 
+  facet_wrap(~Country) +
+  ggtitle("Shark Attack over the Years") + theme_minimal() +
+  theme(legend.position="right",axis.text.x=element_text(angle=90))
+```
+Most shark attacks occur in USA and Australia, there has been a peak in 1960s, then growing number of incidents in recent years
+
+

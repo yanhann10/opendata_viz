@@ -1,0 +1,28 @@
+---
+title: "marvelcomics"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(networkD3)
+library(stringr)
+library(viridis)
+library(visNetwork)
+library(plotly)
+library(gridExtra)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo = FALSE)
+
+```
+
+```{r}
+df <- read_csv("~/git_repo/marvelcomics/hero-network.csv")
+```
+

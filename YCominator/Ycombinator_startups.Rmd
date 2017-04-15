@@ -1,0 +1,112 @@
+#data input
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(formattable)
+library(RColorBrewer)
+library(ggthemes)
+library(tidytext)
+YC <- read_csv("YC.csv")
+YC <- Ycombinator%>%
+  group_by(vertical, year)%>%
+  summarize(n=n())
+```
+```{r}
+#streamgraph of number of startups in each vertical
+library(streamgraph)
+
+YC %>%
+  streamgraph(vertical, n, year)%>%
+  sg_axis_x(1) %>%
+  sg_axis_y(10) %>%
+  sg_legend(show=TRUE, label="Genres: ")
+```
+
+```{r}
+df %>%ggplot(aes(x = vertical)) +
+  geom_dotplot(method="histodot", binwidth = 1.5)
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+#text cloud of words in description
+pal2 <- brewer.pal(8,"Dark2")
+library(tm)
+library(SnowballC)
+library(wordcloud)
+corpus = Corpus(VectorSource(tolower(Ycombinator$description)))
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeWords, stopwords('english'))
+#wordcloud(corpus, max.words = 100, random.order = FALSE,colors=pal2)
+```
+Look at word count in their taglines, for those with tagline
+```{r}
+tagline <- Ycombinator%>%
+  select(vertical,description)%>%
+  filter(!is.na(vertical))%>%
+  filter(!is.na(description))
+tagline%>%
+  mutate(word_count=sapply(strsplit(description, " "), length)) %>%
+  ggplot(aes(word_count))+
+  geom_histogram(bins=10, aes(col=I("white")))+theme_fivethirtyeight() +
+  facet_wrap(~vertical)
+```
+
+We can see many have short catchy tag lines using less than 10 words.
+
+Next let's see what words are used by the most brilliant startups to describe themshelves.
+
+
+```{r}
+library(viridis)
+tagline_by_vertical=tagline %>%
+  unnest_tokens(word,description, token = "ngrams", n = 2)%>%
+  count(vertical,word,sort=TRUE)%>%
+  bind_tf_idf(word,vertical,n)%>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = reorder(word,tf_idf))
+#Overall high-freq words
+tagline_by_vertical%>%
+  head(10)%>%
+  ggplot(aes(reorder(word,tf_idf),tf_idf,fill=n)) +
+  geom_bar(stat='identity',color='white') +
+  theme(axis.text=element_text(size=16))+
+  coord_flip()+scale_fill_viridis() +
+  theme_minimal() +
+  ggtitle("Top words in YCombinator Taglines") +
+  theme(axis.title.y=element_blank())
+
+```
+```{r fig.width=9, fig.height=8}
+#visualize high-freq words in each vertical
+top_tagline_by_vertical=tagline_by_vertical%>%
+  group_by(vertical)%>%
+  slice(1:10)
+
+topwords<-function(vertical_name){
+  top_tagline_by_vertical%>%
+  filter(vertical==vertical_name)%>%
+  mutate(word = reorder(word,tf_idf))%>%
+  ggplot(aes(word,tf_idf,fill=n)) +
+  geom_bar(stat='identity',color='white') +
+  coord_flip()+scale_fill_viridis()+
+  theme(axis.text=element_text(size=16))+
+  ggtitle(vertical_name)
+}
+vertical_name=unique(tagline$vertical)
+
+library(gridExtra)
+g1=topwords("Consumer")
+g2=topwords("B2B")
+g3=topwords("Fintech")
+g4=topwords(vertical_name[[4]])
+g5=topwords(vertical_name[[5]])
+g6=topwords(vertical_name[[6]])
+g7=topwords(vertical_name[[7]])
+g8=topwords(vertical_name[[8]])
+g9=topwords(vertical_name[[9]])
+grid.arrange(g1,g2,g3,g4,g5,g6,g7,g8,g9,nrow=3, ncol=3)
+```
+

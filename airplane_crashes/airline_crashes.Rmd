@@ -1,0 +1,141 @@
+---
+title: "airline_crashes"
+output: html_document
+---
+
+```{r echo=F, message=F, warning=F}
+library(formattable)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(ggraph)
+library(plotly)
+library(readr)
+library(lubridate)
+library(ggtern)
+```
+
+
+```{r preprocessing}
+#source https://www.kaggle.com/saurograndi/airplane-crashes-since-1908
+df <- read_csv("~/git_repo/opendata_viz/airline_crashes/airline_crashes.csv") %>%
+  mutate(year = year(mdy(Date)), month = month(mdy(Date)), hour = hour(hm(Time))) %>%
+  mutate(carrier_type = ifelse(grepl("air force",tolower(Operator))|
+                                 grepl("military",tolower(Operator)),
+                              "Military", "Civilian")) 
+df_civil <- df%>% 
+  filter(carrier_type == "Civilian") %>%
+  mutate(carrier = ifelse(grepl("air taxi",tolower(Operator)),"Air Taxi",
+                   ifelse(grepl("lufthansa",tolower(Operator)),"Lufthansa",
+                   ifelse(grepl("air france",tolower(Operator)),"Air France",
+                    Operator)))) # %>%
+   # mutate(carrier_group = ifelse(grepl("air taxi",tolower(Operator)),"Air Taxi",
+   #                 ifelse(grepl("lufthansa",tolower(Operator)),"Lufthansa",
+   #                 ifelse(grepl("air france",tolower(Operator)),"Air France",
+   #                 "Others"))))
+big_10_accidents <- df_civil%>%
+  filter(carrier!="US Aerial Mail Service")%>%
+  group_by(carrier)%>%
+  summarize(n=n())%>%arrange(desc(n)) %>%
+  head(10)
+big_10_fatality <- df_civil %>%
+  group_by(carrier)%>%summarize(fatality=sum(Fatalities))%>%
+  arrange(desc(fatality)) %>%head(10)
+```
+
+```{r ggtern}
+# Build ternary plot
+install.packages("Downloads/ggtern_2.2.0.tar", repos = NULL, type="source")
+ggtern(df, aes(x = year, y = month, z = hour)) +
+  geom_point(shape=16, alpha=0.2)
+```
+
+```{r militaryvscivil}
+
+```
+
+```{r byairline}
+df %>% group_by(year, carrier_type) %>%
+  summarize(n=n())%>%
+  ggplot(aes(year, n, fill=carrier_type)) + 
+  geom_area(alpha=0.8)+ 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank()) +
+  theme_minimal() + 
+  ggtitle("Plane crashes by Aircraft Type") 
+    
+```
+```{r accidents}
+df_civil%>% filter(carrier %in% big_10_accidents$carrier)%>% 
+ mutate(carrier=factor(carrier, levels=c("Air Taxi", "Aeroflot",
+                                         "Lufthansa", "Air France",
+                                        "China National Aviation Corporation",
+                                        "United Air Lines", "Pan American World Airways",
+                                        "American Airlines","Indian Airlines",
+                                        "KLM Royal Dutch Airlines")))%>%
+  ggplot(aes(year)) +
+  geom_bar(aes(fill=carrier)) +
+  facet_grid(carrier~., switch="y") +
+  theme_minimal() +
+  theme(panel.grid.major.y = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        legend.position="None",
+        strip.text.y = element_text(size = 8, angle = 180, hjust=1),
+        axis.title.y=element_blank(),axis.title.x=element_blank(),
+        plot.title = element_text(hjust = 0.3),
+        axis.text.y=element_text(colour="grey"))  +
+  ggtitle("Number of Accidents by Year") +
+  scale_y_continuous(breaks = seq(0,20,10)) 
+  #hjust for rightalign #strip.text for facet label
+```
+```{r fatality}
+df_civil%>% filter(carrier %in% big_10_fatality$carrier)%>%
+  mutate(carrier=factor(carrier, levels=c("Aeroflot","American Airlines",
+                                          "Air Taxi","Pan American World Airways",
+                                          "United Air Lines","AVIANCA",
+                                          "Turkish Airlines (THY)","Indian Airlines",
+                                          "China Airlines (Taiwan)","Air India")))%>%
+  group_by(year, carrier) %>%
+  summarize(Fatalities = sum(Fatalities)) %>%
+  ggplot(aes(year, Fatalities)) +
+  geom_bar(stat = "identity", 
+           aes(fill=carrier)) +
+  facet_grid(carrier~., switch="y") +
+  theme_minimal() +
+  theme(panel.grid.major.y = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        legend.position="None",
+        strip.text.y = element_text(size = 8, angle = 180, hjust=1),
+        axis.title.y=element_blank(), axis.title.x=element_blank(),
+        plot.title = element_text(hjust = 0.3),
+        axis.text.y=element_text(colour="grey")) +
+  ggtitle("Number of Fatalities by Year") +
+  scale_y_continuous(breaks = seq(0,800,400))
+```
+
+```{r ratio}
+sum(big_10_fatality$Fatalities)/sum(df_civil$Fatalities, na.rm=T)
+
+```
+
+```{r frequency}
+df_civil%>%group_by(carrier) %>% 
+  summarize(n = n()) %>%
+    mutate(num_accident = cut(n, breaks=c(0,1, 60,1500))) %>%
+  group_by(num_accident) %>%
+  summarize(num_carrier=n()) %>%
+  ggplot(aes(num_accident, num_carrier)) + 
+  geom_bar(stat='identity') + 
+  ggtitle("Number of carriers by number of accidents") +
+  theme_minimal()
+  
+```
+
+```{r crashreason}
+
+```
+
+
+
+

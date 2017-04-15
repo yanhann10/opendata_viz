@@ -1,0 +1,282 @@
+---
+title: "The Shifting Appeal of MOOC"
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(lubridate)
+library(zoo)
+library(formattable)
+#install_github("treemap", username="mtennekes", subdir="pkg")
+library(treemap)
+library(stringr)
+library(wordcloud) #text
+library(tm)
+library(qdap)
+
+edx <- read_csv("~/git_repo/edx/edx.csv")
+
+colnames(edx) = gsub(" ","_",colnames(edx))
+colnames(edx) = gsub("%","pct",colnames(edx))
+
+edx <- edx %>% 
+  mutate(launch_year = year(mdy(Launch_Date))) %>%
+  mutate(Course=str_wrap(Course_Subject, width = 16)) %>%
+  mutate(course_group = ifelse(Course_Subject=="Government, Health, and Social Science"|
+                                       Course_Subject=="Humanities, History, Design, Religion, and Education", "Arts","Science")) %>%
+  mutate(enrolment = `Participants_(Course_Content_Accessed)`)
+
+
+```
+
+```{r}
+
+```
+
+#Course offering by institution across the years
+```{r}
+edx%>%
+  group_by(Institution, Course_Subject, launch_year) %>%
+  ggplot(aes(launch_year, fill=Course_Subject)) + 
+  geom_bar(position="stack") +
+  facet_wrap(~Institution) + 
+  theme_minimal() + 
+  theme(legend.position="bottom",legend.title=element_blank()) + 
+  guides(fill=guide_legend(nrow=2,byrow=TRUE))
+
+```
+
+In general HarvardX offered more Humanities courses, which was added to edX in 2013 and grew quickly in the next two years, while MITx offered more science and technology courses. 2015 marks the year both offered most number of MOOC.
+
+#number of attendees
+```{r enrol}
+edx %>% group_by(Institution, Course, month=as.yearqtr(mdy(Launch_Date))) %>%
+  summarize(enrollments = sum(enrolment)) %>% 
+  ggplot(aes(month, enrollments, fill=Institution)) + 
+  geom_bar(stat = "identity") +
+  facet_wrap(~Course) + 
+  theme_minimal() +
+  theme(legend.position = "bottom",legend.title=element_blank()) +
+  ggtitle("Enrolment by Subject") +
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(), plot.title = element_text(hjust = 0.5))
+```
+
+```{r enrolavg}
+edx  %>% group_by(Course_Subject)  %>% summarise(median_enrollment=round(median(enrolment,0)),                       median_hour=round(median(
+  (`Total_Course_Hours_(Thousands)`)*1000.0/(enrolment)
+  ,0))) %>%
+  formattable(align="l")
+```
+
+```{r certoverall}
+edx %>% group_by(course_group) %>%
+  summarize(avg_cert=sum(Certified)/
+              sum(enrolment)) 
+```
+
+```{r cert}
+cert <- edx %>% group_by(Institution, Course_Subject, month=as.yearqtr(mdy(Launch_Date))) %>%
+  summarize(avg_cert=sum(Certified)/
+              sum(enrolment)) 
+cert%>% 
+  ggplot(aes(month, avg_cert, col=Institution)) + 
+  geom_line() +
+  facet_wrap(~Course_Subject) + 
+  theme_minimal() +
+  theme(legend.position = "bottom",legend.title=element_blank()) +
+  ggtitle("Certification rate by Subject") +
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(), plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels=percent) +scale_x_discrete()
+
+```
+
+```{r auditoverall}
+edx %>% 
+  group_by(course_group) %>%
+  summarize(avg_audit=sum(`Audited_(>_50pct_Course_Content_Accessed)`)/
+              sum(enrolment))
+```
+
+```{r audit}
+edx %>% 
+  group_by(Institution, Course_Subject, month=as.yearqtr(mdy(Launch_Date))) %>%
+  summarize(avg_audit=sum(`Audited_(>_50pct_Course_Content_Accessed)`)/
+              sum(enrolment)) %>% 
+  ggplot(aes(month, avg_audit, col=Institution)) + 
+  geom_line() +
+  facet_wrap(~Course_Subject) + 
+  theme_minimal() +
+  theme(legend.position = "bottom",legend.title=element_blank()) +
+  ggtitle("Audit rate by Subject") +
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(), plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels=percent)
+```
+
+
+Overall only 5% of course participants went through videos and quizzes for the certification.
+
+#Certification rate by course
+
+First to get a sense of participants by course and subject, treemap could be good for that purpose.
+```{r treemap static}
+# ppl <- edx %>% 
+#   filter(launch)
+#   group_by(Course_Subject, Course_Title) %>%
+#   summarise(participants = sum(enrolment),
+#             avg_cert=sum(Certified)/
+#               sum(enrolment)) 
+# 
+# treemap(ppl, index=c("Course_Subject", "Course_Title"), vSize="participants", vColor="avg_cert", title="Participants and Certification Rate by Course", type = "value")
+```
+
+We can see:
+
+*  Introduction to Computer Science from MITx has been one of the most popular courses, however completion rate is also among the lowest. 
+
+*  The ratio of people sticking through courses in Humanities bucket are higher. Courses such as Communist Liberations, Creating China and Invasions, Rebellions, and the end of Imperial China are among the top 3 in certification rate. There isn't student location/nationality data to reveal why this is the case.
+
+*  Within Social Science, Health and Society has high certification rate while The Analytics Edge has the most participants.
+
+*  Among Science and Engineering bucket, Super Earth and Life proofs to be catchy enough for people to complete it.
+
+#top and bottom courses
+```{r top}
+#use similar launch year to avoid novelty effect
+edx %>%
+  filter(launch_year==2015, enrolment>10000, pct_Certified>4) %>%
+  arrange(desc(enrolment))%>%
+  group_by(Course_Subject)%>%
+  select(Course_Subject,Course_Title, launch_year, Institution,  enrolment,pct_Certified)%>%
+  slice(1) %>%
+  formattable(align='l')
+```
+
+```{r bottom}
+edx %>%
+  filter(enrolment<3000, pct_Certified<1) %>%
+  arrange((enrolment))%>%
+  group_by(Course_Subject)%>%
+  select(Course_Subject,Course_Title,launch_year,  Institution,  enrolment,pct_Certified)%>%
+  slice(1) %>%
+  formattable(align='l')
+```
+
+```{r textprep}
+
+course_mit <- edx %>% filter(Institution == "MITx") %>% select(Course_Title)
+course_havard <- edx %>% filter(Institution == "HarvardX") %>% select(Course_Title) 
+course <- c(as.vector(course_mit), as.vector(course_havard))
+
+# create corpus
+corpus = Corpus(VectorSource(course))
+
+
+```
+
+```{r tdm}
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, content_transformer(replace_abbreviation))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, c(stopwords("en"), "Introduction","introduction"))
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  return(corpus)
+}
+corpus <- clean_corpus(corpus)
+# create term-document matrix
+tdm = TermDocumentMatrix(corpus)
+
+# convert as matrix
+tdm = as.matrix(tdm)
+
+# add column names
+colnames(tdm) = c("MIT", "Harvard")
+```
+
+```{r wordcloud, message=F}
+comparison.cloud(tdm, random.order=FALSE, 
+title.size=1.5, max.words=200)
+```
+```{r}
+commonality.cloud(tdm, random.order=FALSE, 
+title.size=1.5, max.words=200)
+```
+
+```{r}
+edx = edx %>% mutate(genderpreference=ifelse(pct_Female>=50,"Female","Male"))
+course_f <- edx %>% filter(genderpreference == "Female") %>% select(Course_Title)
+course_m <- edx %>% filter(genderpreference == "Male") %>% select(Course_Title) 
+course_g <- c(as.vector(course_f), as.vector(course_m))
+
+# create corpus
+corpus_g = Corpus(VectorSource(course_g))
+
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, content_transformer(replace_abbreviation))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, c(stopwords("en"), "Introduction", "The"))
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  return(corpus)
+}
+corpus_g = clean_corpus(corpus_g)
+tdm_g = TermDocumentMatrix(corpus_g)
+
+# convert as matrix
+tdm_g = as.matrix(tdm_g)
+
+# add column names
+colnames(tdm_g) = c("Female", "Male")
+comparison.cloud(tdm_g, random.order=FALSE, 
+title.size=1.5, max.words=50)
+```
+
+
+
+
+```{r}
+commonality.cloud(tdm_g, max.word=100)
+```
+
+```{r age}
+
+comparisonplt = function(i) {
+edx = edx %>% mutate(preference=ifelse(Median_Age>=i,">=30yr old","<=30yr old"))
+course_o <- edx %>% filter(preference == ">=30yr old") %>% select(Course_Title)
+course_y <- edx %>% filter(preference == "<=30yr old") %>% select(Course_Title) 
+course_a <- c(as.vector(course_o), as.vector(course_y))
+
+# create corpus
+corpus_a = Corpus(VectorSource(course_a))
+corpus_a = clean_corpus(corpus_a)
+tdm_a = TermDocumentMatrix(corpus_a)
+
+# convert as matrix
+tdm_a = as.matrix(tdm_a)
+
+# add column names
+colnames(tdm_a) = c(paste0(">= ", i),paste0("< ", i))
+comparison.cloud(tdm_a, random.order=FALSE, 
+title.size=1.5, max.words=50)
+}
+
+library(animation)
+saveGIF(
+{
+    for (i in seq(25, 50, 5)) {
+        comparisonplt(i) 
+     }
+}
+, movie.name = "preference_by_age.gif", interval = 1, nmax = 30,
+ani.width=850, ani.height=500)
+```
+

@@ -1,0 +1,157 @@
+---
+title: "ISIS Twitter Network"
+output: 
+    html_document: 
+      toc: true
+---
+
+This article explores how ISIS followers spread information via Twitter Network, their primary social outlet
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(networkD3)
+library(stringr)
+library(visNetwork)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo = FALSE)
+data <- read_csv("tweets.csv")
+```
+
+```{r warning=FALSE, echo=FALSE}
+glimpse(data)
+data=data%>%
+mutate(time=mdy_hm(time))%>%
+mutate(hour=hour(time))%>%
+mutate(wday=wday(time, label = TRUE))%>%
+mutate(month=month(time))%>%
+mutate(year=year(time))%>%
+arrange(time)%>%
+mutate(yr_month=paste(year(time),month(time),sep='-'))%>%
+mutate(date=ymd(paste(year(time),month(time),day(time),sep='-')))%>%
+mutate(is_retweet = ifelse(grepl("^\\bRT\\b", tweets), "Retweets", "Originaltweets"))
+```
+#Followers
+To understand the fanbase, let's look at their number of tweets vs number of followers
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+fanbase=data%>%
+select(name,followers,tweets)%>%
+group_by(name)%>%
+summarize(n_follower=max(followers),n_tweet=n())
+
+wss <- numeric(15)
+for (k in 1:15) {wss[k] <- sum(kmeans(as.matrix(fanbase[, 2:3]), centers=k,nstart=25)$withinss)}
+
+
+set.seed(20)
+ISIScluster <- kmeans(as.matrix(fanbase[, 2:3]), 4, nstart = 20)
+
+fanbase%>%
+ggplot(aes(n_tweet,n_follower))+
+geom_point(aes(color=factor(ISIScluster$cluster)))+
+geom_text(aes(label=ifelse(n_follower>7000|n_tweet>700,as.character(name),'')),vjust=1.5)+
+guides(color=FALSE)+
+ggtitle('Number of Tweets vs Followers') +
+theme_classic()
+```
+
+Rami stands out with large number of follower and tweet activity.  
+War Breaking News, Conflict Reporter and Salahuddin Ayubi has the most tweets activity
+
+#Timeline of tweets
+
+##activity types
+```{r}
+data%>%group_by(is_retweet)%>%
+summarize(n_tweet=n())%>%
+head()
+```
+It appears retweet vol is about half of original tweets.
+
+##tweet/retweet activity by most active users
+```{r}
+data%>%
+filter(name%in%c("Rami","War BreakingNews","Conflict Reporter","Salahuddin Ayubi"))%>%
+select(date,tweets,is_retweet)%>%
+arrange(date)%>%
+group_by(date,is_retweet)%>%
+summarize(n_tweet=n())%>%
+ggplot(aes(date,n_tweet,fill=is_retweet))+
+geom_bar(stat='identity',position='stack',color='white') +
+theme_classic()
+```
+Activity peaked at:  
+* Mar 17 (when news of ISIS killing Syrian poet broke out)
+* Apr 05 (ISIS launched chemical weapon to attack Syrian army base)  
+It appears all of these only started to be active since 2016 Feb
+
+
+##hastags
+Let's next look into hashtag applied everyday  
+
+```{r hashtag}
+hash=data%>%
+  mutate(hash=str_extract_all(tweets, "#\\w+"))%>%
+  select(hash)%>%
+  filter(!is.na(hash))%>%
+  unnest(hash)%>%
+  group_by(hash)%>%
+  summarize(n_hash=n())%>%
+  arrange(desc(n_hash))
+```
+Could hashtag shed some light on what happened on the days of peak twitter activity?
+```{r}
+calloutdays=c('2016-03-11','2016-03-27','2016-04-05')
+hashspecial=data%>%
+  filter(date%in%calloutdays)%>%
+  mutate(hash=str_extract(tweets, "#\\w+"))%>%
+  select(date,hash)
+```
+
+##mentions
+Let's also top handles mentioned  
+
+```{r mention}
+mention=data%>%
+  mutate(mention=str_extract_all(tweets, "@\\w+"))%>%
+  select(mention)%>%
+  filter(!is.na(mention))%>%
+  unnest(mention)%>%
+  group_by(mention)%>%
+  summarize(n_mention=n())%>%
+  arrange(desc(n_mention))
+mention%>%
+  head(10)
+```
+
+#Mention Network
+Due to sparse twitter activity in 2015, we zoom in to 2016
+```{r warning=FALSE, fig.height=5,fig.width=10}
+user=data%>%select(username)%>%unique()
+links=data %>%
+  select(from = username, tweets)%>%
+  mutate(to = str_extract_all(tweets, '(?<=@)\\w+')) %>%
+  filter(to != 'character(0)') %>%
+  select(-tweets) %>%
+  unnest(to) %>%
+  mutate(flag = to %in% user$username) %>%
+  filter(flag == TRUE) %>%
+  filter(from != to) %>%
+  select(-flag) %>%
+  group_by(from,to) %>% 
+  tally()
+
+nodes=data.frame(id=unique( union(unique(links$from), unique(links$to))))
+nodes=data%>%mutate(id=username)%>%
+  group_by(id)%>%tally()
+nodes$size <- sqrt(nodes$n)
+nodes$title <-nodes$id
+links$arrows <-'to'
+links$width<- (links$n)^(1/3)
+visNetwork(nodes, links, main='Twitter Network')%>%
+  visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) 
+```

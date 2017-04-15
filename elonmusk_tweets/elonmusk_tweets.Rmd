@@ -1,0 +1,213 @@
+---
+title: "Mining Elon Musk's tweets"
+output: 
+    html_document: 
+      toc: true
+---
+
+This article explores how ISIS followers spread information via Twitter Network, their primary social outlet
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(networkD3)
+library(stringr)
+library(viridis)
+library(visNetwork)
+library(plotly)
+library(gridExtra)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo = FALSE)
+
+```
+
+```{r input, warning=FALSE, echo=FALSE}
+#data from https://data.world/adamhelsinger/elon-musk-tweets-until-4-6-17
+df <- read_csv("~/git_repo/elonmusk_tweets/elonmusk_tweets.csv") %>%
+mutate(created_at = ymd_hms(created_at),
+       hour = hour(created_at),
+       wday = wday(created_at, label = TRUE),
+       year = year(created_at))%>%
+mutate(text = substring(text, 3),
+       is_retweet = ifelse(substr(text, 1, 2) == "RT", "retweets", "original tweets"))
+```
+#activity time
+```{r}
+df %>% group_by(hour,wday) %>%
+  summarize(n = n())%>%
+  ggplot(aes(hour,wday)) + 
+  geom_tile(aes(fill = n), colour = "white") +
+  scale_x_continuous(breaks = seq(0, 24, by = 3)) +
+  scale_fill_viridis() + theme_minimal() 
+  
+```
+```{r vol}
+df%>%group_by(year)%>%summarize(count=n())
+```
+
+In the 7 years there was no tweet activity 11am Mon or 13PM Thurs.
+```{r}
+p = ggplot(data = subset(df, year>=2012), aes(x = created_at)) +
+        geom_histogram(aes(fill = ..count..)) +
+        theme(legend.position = "none") +
+        xlab("Time") + ylab("Number of tweets") + 
+        scale_fill_viridis() +
+        theme_minimal() + 
+  ggtitle("tweet activity over the years")
+ggplotly(p)
+```
+
+
+#whose tweets are re-tweeted
+```{r mention, warning=FALSE, fig.height=5,fig.width=10}
+mention <- df %>% 
+  filter(is_retweet == "retweets") %>% 
+  mutate(mention = str_extract_all(text, '(?<=@)\\w+')) %>%
+  unnest(mention) 
+topmention <- mention%>%
+  group_by(mention) %>%
+  summarize(n = n()) %>%
+  arrange(desc(n)) %>%
+  head(10)
+```
+
+```{r retweetbyyear}
+p <- mention %>%
+  filter(mention %in% topmention$mention) %>%
+  group_by(year, mention) %>%
+  summarize(n = n()) %>%
+  ggplot(aes(year, n, fill=mention)) +
+  geom_bar(stat = 'identity') +
+  theme_minimal() +
+  theme(legend.position="None",axis.title.y=element_blank(),axis.title.x=element_blank())+   ggtitle("Reweeted accounts") +
+  scale_colour_brewer(palette = "Set3")
+
+ggplotly(p) 
+```
+
+
+
+#whose mentioned are replied to
+```{r mention, warning=FALSE, fig.height=5,fig.width=10}
+replies <- df %>% 
+  filter(is_retweet != "retweets") %>% 
+  mutate(mention = str_extract_all(text, '(?<=@)\\w+')) %>%
+  unnest(mention) %>%
+  group_by(mention) %>%
+  summarize(n = n()) %>%
+  arrange(desc(n)) %>%
+  head(20)
+```
+
+#what are the frequently used words?
+```{r}
+library(tm)
+library(qdap)
+#remove handle, url
+text <- df %>% 
+  filter(is_retweet != "retweets") %>% 
+  mutate(text = gsub("@\\w+", "", text) ) %>%
+  mutate(text = gsub('http.* *', "", text))
+
+# & will turn in amp with replace_Abbrev then show as keyword
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, content_transformer(replace_abbreviation))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removeWords, c(stopwords("en"), "amp","elonmusk"))
+  return(corpus)
+}
+Corpus <- Corpus(VectorSource(text$text))
+myCorpus <- clean_corpus(Corpus)
+```
+
+```{r}
+tdm <- TermDocumentMatrix(myCorpus,
+control = list(wordLengths = c(2, Inf)))
+findFreqTerms(tdm, 60)
+
+```
+```{r plottermfreq}
+term_frequency <- sort(rowSums(as.matrix(tdm)), decreasing = T)
+barplot(term_frequency[1:15], las = 2)
+```
+
+```{r}
+terms <- c("will")
+# control decimal points in x axis labels
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+assoc_term <- function(i) {
+associations<-findAssocs(tdm, i,0.15)
+associations_df=list_vect2df(associations)[, 2:3]
+ggplot(associations_df, aes(y = associations_df[, 1])) + 
+  geom_point(aes(x = associations_df[, 2]), 
+             data = associations_df, size = 3) +
+  theme_minimal() +
+  ggtitle(paste0(i)) +
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(), plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels=scaleFUN) 
+}
+p1= assoc_term("will")
+p2= assoc_term("just")
+p3= assoc_term("tesla")
+p4= assoc_term("model")
+p5= assoc_term("good")
+p6= assoc_term("rocket")
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow=2)
+```
+
+
+
+```{r wordtrend}
+# word_freq <- text %>%
+#   unnest_tokens(word, text) %>%
+#   anti_join(stop_words) %>%
+#   count(year, word) %>%
+#   ungroup() %>%
+#   complete(year, word, fill = list(n = 0)) %>%
+#   group_by(year) %>%
+#   mutate(year_total = sum(n),
+#          percent = n / year_total) %>%
+#   ungroup()
+
+```
+
+
+
+```{r POS}
+# tagPOS <-  function(x, ...) {
+#   s <- as.String(x)
+#   word_token_annotator <- Maxent_Word_Token_Annotator()
+#   a2 <- Annotation(1L, "sentence", 1L, nchar(s))
+#   a2 <- annotate(s, word_token_annotator, a2)
+#   a3 <- annotate(s, Maxent_POS_Tag_Annotator(), a2)
+#   a3w <- a3[a3$type == "word"]
+#   POStags <- unlist(lapply(a3w$features, `[[`, "POS"))
+#   POStagged <- paste(sprintf("%s/%s", s[a3w], POStags), collapse = " ")
+#   list(POStagged = POStagged, POStags = POStags)
+# }
+```
+
+```{r}
+# tagPOS(text$text[1])
+```
+
+
+
+```{r}
+#for LDA each document row cannot be all-0
+# library(topicmodels)
+# dtm <- as.DocumentTermMatrix(tdm)
+# rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
+# dtm   <- dtm[rowTotals> 0, ]
+# lda <- LDA(dtm, k = 3) # find 3 topics
+# term <- terms(lda, 7) # first 7 terms of every topic
+# (term <- apply(term, MARGIN = 2, paste, collapse = ", "))
+```
+

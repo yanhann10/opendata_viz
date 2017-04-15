@@ -1,0 +1,175 @@
+---
+title: "Visualization data visualization"
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(plotly)
+library(viridis)
+library(ggthemes)
+
+```
+
+```{r message=FALSE}
+#data from https://github.com/emeeks/data_visualization_survey/blob/master/data/cleaned_survey_results.csv
+df<- read_csv("~/git_repo/Dataviz_survey/dataviz_survey.csv")
+```
+
+```{r check}
+sum(sapply(df, is.numeric))
+sum(sapply(df, is.character))
+```
+```{r}
+colnames(df) <- c("ts", "years_in_dataviz","education","how_to_learn","how_to_start",
+                   "first_job","job_title","compensation","proportion",
+                   "hired_for_dataviz","job_status","how_is_dataviz_used",
+                   "team_structure","usage","leadership_role","department",
+                   "pct_dv","pct_de","pct_ds","pct_design","pct_prep",
+                   "tool","tool_origin","how_to_present","chart_type",
+                   "audience","fluency","frequency_usage","purpose","relation",
+                   "frustration","frustration_dataviz","what_to_change",
+                   "what_to_change_dataviz","ppl_dont_get_it",
+                   "how_to_make_job_better","what_to_expect","viz_hero",
+                   "time_spent_in_future","gender","age","location",
+                   "race","sector")
+```
+
+```{r}
+summary(df)
+```
+```{r}
+lapply(df[,22:30], table) #apply to all character col
+```
+#demographics
+```{r}
+demographics <- df %>%
+  group_by(years_in_dataviz, education, job_status, gender, age, location, race, sector) %>%
+  summarize(n = n())
+write.csv(demographics, "datavizdemographics.csv")
+#input to raw density for nice sankey chart to view multiple dimension at once
+```
+The surveyed is heavily focused on North America, followed by Europe; mostly male.Most of the surveyed use data visualization for part of the job, only 21% are hired for data visualization.
+It has a good representation of both fresh grad and experienced professional; and reasonably covers private and public sectors as well as academic.
+
+```{r}
+# i='education'
+# df %>% #select(i) %>%
+# #   mutate_(i = strsplit(i,";")) %>%
+# #            unnest()%>% filter(!is.na(i)) %>%
+#   group_by_(i) %>% summarize(n=n()) %>%
+#   arrange(desc(n)) %>% head(20) %>%
+#   ggplot(aes(i, n)) + geom_bar(stat="identity") + coord_flip() +
+#   theme_bw()
+```
+
+#favorite charttype
+```{r}
+chart_type <- df %>% select(chart_type, education,how_to_learn,first_job,
+                   job_status,hired_for_dataviz,gender,age,location,
+                   race,sector) %>%
+  mutate(chart_type = strsplit(chart_type,";")) %>%
+           unnest()
+chart_type %>% filter(!is.na(chart_type)) %>%
+  group_by(chart_type) %>% summarize(n=n()) %>%
+  arrange(desc(n)) %>% head(20) %>%
+  ggplot(aes(reorder(chart_type, n), n)) + geom_bar(stat="identity") + coord_flip() +
+  theme_tufte() + 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
+        panel.grid.major.x = element_line(colour = "grey"))
+```
+#Who are the purpose
+```{r audience}
+audience <- df %>% select(audience, education,how_to_learn,first_job,
+                   job_status,hired_for_dataviz,gender,age,location,
+                   race,sector) %>%
+  mutate(audience = strsplit(audience,";")) %>%
+           unnest() %>%
+  filter(!is.na(audience)) %>%
+  group_by(audience) %>% 
+  summarize(n=n())
+audience_top8 <- audience %>% 
+  arrange(desc(n)) %>% head(8) 
+audience%>%
+  mutate(audience = ifelse(audience %in% audience_top8$audience, audience,"others"))%>%
+  ggplot(aes(reorder(audience, n), n)) + geom_bar(stat="identity") + coord_flip() +
+  theme_tufte() + 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank())
+```
+
+```{r how_to_present}
+how_to_present <- df %>% select(how_to_present, education,how_to_learn,first_job,
+                   job_status,hired_for_dataviz,gender,age,location,
+                   race,sector) %>%
+  mutate(how_to_present = strsplit(how_to_present,";")) %>%
+           unnest() %>%
+  filter(!is.na(how_to_present)) %>%
+  group_by(how_to_present, hired_for_dataviz) %>% 
+  summarize(n=n()) %>%
+  arrange(desc(n)) %>%
+  ungroup()
+how_to_present_top7 = how_to_present%>% head(7) 
+how_to_present %>% 
+  mutate(how_to_present = ifelse(how_to_present %in% how_to_present_top7$how_to_present, how_to_present,"others")) %>% 
+  ggplot(aes(reorder(how_to_present, n), n)) + geom_bar(stat="identity") + 
+  coord_flip() +
+  theme_tufte() + 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank()) +
+  facet_wrap(~hired_for_dataviz)
+```
+```{r usage}
+how_is_dataviz_used <- df %>% select(how_is_dataviz_used, education,how_to_learn,first_job,
+                   job_status,hired_for_dataviz,gender,age,location,
+                   race,sector) %>%
+  mutate(how_is_dataviz_used = strsplit(how_is_dataviz_used,";")) %>%
+           unnest()
+how_is_dataviz_used %>% filter(!is.na(how_is_dataviz_used)) %>%
+  group_by(how_is_dataviz_used) %>% summarize(n=n()) %>%
+  arrange(desc(n)) %>% head(10) %>%
+  ggplot(aes(reorder(how_is_dataviz_used, n), n)) + geom_bar(stat="identity") + 
+  coord_flip() +
+  theme_tufte() + 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank())
+```
+
+#viz gurus
+```{r}
+# common_fields <- c("education","how_to_learn","first_job",
+#                    "job_status","hired_for_dataviz","gender","age","location",
+#                    "race","sector")
+guru <- df %>% select(viz_hero, education,how_to_learn,first_job,
+                   job_status,hired_for_dataviz,gender,age,location,
+                   race,sector) %>%
+  mutate(guru = strsplit(viz_hero,";")) %>%
+           unnest()
+guru %>% filter(!is.na(guru)) %>%
+  group_by(guru) %>% summarize(n=n()) %>%
+  arrange(desc(n)) %>% head(20) %>%
+  ggplot(aes(reorder(guru, n), n)) + 
+  geom_bar(stat="identity") + 
+  coord_flip() +
+  theme_tufte() + 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank())
+```
+```{r howtolearn}
+library(stringr)
+df %>% filter(!is.na(hired_for_dataviz)) %>%
+  ggplot(aes(str_wrap(how_to_learn,20), 
+             str_wrap(hired_for_dataviz,22))) +
+  geom_jitter(alpha=0.5) +
+  theme_tufte() + 
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
+        #axis.text.x = element_text(angle=30,hjust=1,vjust=0.8)
+        )
+```
+

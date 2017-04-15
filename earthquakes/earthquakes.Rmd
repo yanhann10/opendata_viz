@@ -1,0 +1,126 @@
+---
+title: "earthquakes"
+output: html_document
+---
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(ggplot2) # Data visualization
+library(ggrepel)
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(plotly)
+library(viridis)
+library(leaflet)
+library(leaflet.extras)
+
+```
+
+
+```{r}
+table(df$Type)
+```
+Not everything in the dataset are natural earthquakes, some are seismic activity caused by nuclear explosion.
+
+```{r}
+#data from https://www.kaggle.com/usgs/earthquake-database
+ df <- read_csv("~/git_repo/earthquakes/earthquakes.csv") 
+
+```
+```{r}
+table(df$Type)
+```
+```{r avg}
+df %>% mutate(year = year(mdy(Date))) %>%
+  group_by(year) %>% summarize(count=n()) %>%
+  mutate(avg = mean(count))
+  
+```
+
+```{r}
+library(purrr)
+library(tidyr)
+df %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()+ theme_minimal()
+```
+
+#in leaflet
+```{r}
+#convert coord to countries
+library(rworldmap)
+points=df %>%select(Longitude,Latitude)
+coords2country = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+  #countriesSP <- getMap(resolution='high') #you could use high res map from rworldxtra if you were concerned about detail
+  
+  # convert our list of points to a SpatialPoints object
+  
+  # pointsSP = SpatialPoints(points, proj4string=CRS(" +proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0"))
+  
+  #setting CRS directly to that from rworldmap
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+  
+  
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices = over(pointsSP, countriesSP)
+  
+  # return the ADMIN names of each country
+  indices$ADMIN  
+  #indices$ISO3 # returns the ISO3 code 
+  #indices$continent   # returns the continent (6 continent model)
+  #indices$REGION   # returns the continent (7 continent model)
+}
+points$country=coords2country(points)
+#learning: points in ocean won't be mapped to a country
+```
+
+
+
+
+```{r nuclearseismic}
+#icon form http://www.flaticon.com/free-icon/radiation_195741#term=radioactivity&page=1&position=20
+nuclearIcon <- makeIcon(
+  iconUrl = "https://s27.postimg.org/61nx9olb7/radiation-3.png",
+  iconWidth = 32, iconHeight = 28,
+  iconAnchorX = 0, iconAnchorY = 0
+)
+
+df %>% filter(Type=="Nuclear Explosion")%>%
+  leaflet() %>%
+addProviderTiles(providers$CartoDB) %>%
+addMarkers(lng=~Longitude, lat=~Latitude,
+                icon=nuclearIcon)
+```
+```{r}
+df %>% filter(Type=="Earthquake")%>%
+  leaflet(df) %>%
+addProviderTiles(providers$CartoDB.DarkMatter) %>%
+addWebGLHeatmap(lng=~Longitude, lat=~Latitude, size=2)
+```
+
+
+
+
+#in ggplot
+
+```{r}
+data(maps:wordMapEnv)
+world <- map_data("World")
+  ggplot() + geom_polygon(data = world, aes(x =  long,  y= lat, group = group)) + 
+  geom_point(data = df, 
+             aes(x = Longitude, y = Latitude, colour = `Magnitude Type` )) +
+  stat_density2d(show.legend = FALSE) + xlab("Longitude") +ylab("Latitude") + ggtitle("Magnitude Type")+ coord_quickmap()
+```
+
+
