@@ -15,12 +15,21 @@ library(plotly)
 library(readr)
 library(lubridate)
 library(ggtern)
+require(rJava)
+library(tm)
+library(qdap)
+library(slam)
+library(topicmodels)
+library(wordcloud)
+library(wordcloud2)
+library(igraph)
+library(networkD3)
 ```
 
 
 ```{r preprocessing}
 #source https://www.kaggle.com/saurograndi/airplane-crashes-since-1908
-df <- read_csv("~/git_repo/opendata_viz/airline_crashes/airline_crashes.csv") %>%
+df <- read_csv("~/git_repo/opendata_viz/airplane_crashes/airplane_crashes.csv") %>%
   mutate(year = year(mdy(Date)), month = month(mdy(Date)), hour = hour(hm(Time))) %>%
   mutate(carrier_type = ifelse(grepl("air force",tolower(Operator))|
                                  grepl("military",tolower(Operator)),
@@ -131,11 +140,110 @@ df_civil%>%group_by(carrier) %>%
   theme_minimal()
   
 ```
+#Crash Reasons
+```{r dtm}
 
-```{r crashreason}
+# & will turn in amp with replace_Abbrev then show as keyword
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, content_transformer(replace_abbreviation))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removeWords, c(stopwords("en"), 
+                                          "plane","airplane","aircraft",
+                                          "crashed","crash",
+                                          "accident","flight"))
+  # corpus.copy <- corpus
+  # corpus <- tm_map(corpus, stemDocument)
+  # corpus <- tm_map(corpus, stemCompletion, dictionary = corpus.copy)
+  return(corpus)
+}
+Corpus <- Corpus(VectorSource(subset(df_civil, !is.na(df_civil$Summary))$Summary))
+myCorpus <- clean_corpus(Corpus)
+
+tdm <- TermDocumentMatrix(myCorpus,
+control = list(wordLengths = c(2, Inf)))
+# FreqTerms=(findFreqTerms(tdm, 100))
+# findFreqTerms(tdm, 200)
+```
+```{r}
+wordcloud(myCorpus, max.words=60,
+            colors=brewer.pal(8, "Dark2"),
+            random.color=TRUE)
+```
+```{r}
+wordcloud2(term_frequency, size=0.5)
+#results not showing top freq words
+```
+
+```{r freqterms}
+
+term_frequency <- data.frame(freq=rowSums(as.matrix(tdm))) %>%
+  mutate(term=row.names(term_frequency)) %>% select(c(2,1))
+
+# Sort term_frequency in descending order
+term_frequency2 <-term_frequency %>%arrange(desc(freq))%>%head(120)
+```
+
+
+```{r customwc}
+#custom wordcloud
+wordcloud2(term_frequency, figPath = "airplane.png", size = 0.39, color = "skyblue")
+```
+
+
+```{r}
+FreqTerms <- findFreqTerms(tdm, 200)
+FreqTerms300 <- findFreqTerms(tdm, 300)
+assocterms=findAssocs(dtm, terms = FreqTerms300, corlimit = 0.22)
+
+#use unlist to turn a nested list into dataframe
+assoc_df <- data.frame(cor = unlist(assocterms))
+assoc_df <- assoc_df %>%
+  mutate(term=row.names(assoc_df), cor=NULL) %>%
+  separate(term, into=c("from","to")) 
+```
+
+```{r network}
+simpleNetwork(assoc_df, fontSize = 15,zoom=TRUE)
+```
+
+#many words associated with crew are also associated with left
+```{r}
+temp = df_civil%>%select(Summary)%>%
+  filter(grepl("fire",Summary))%>%filter(grepl("left",Summary))
+```
+
+#takeoff/landing/en-routes
+```{r whereabouts}
 
 ```
 
 
 
+```{r lda}
+# library(tidytext)
+# dtm <- DocumentTermMatrix(myCorpus,
+# control = list(wordLengths = c(2, Inf)))
+# my_lda <- LDA(dtm, k = 4, control = list(seed = 1234))
+# topword <- tidy(my_lda, matrix = "beta")%>%
+#   group_by(topic) %>%
+#   top_n(10, beta)  
+# topword%>%
+#   mutate(term = reorder(term, beta)) %>%
+#   ggplot(aes(term, beta, fill = factor(topic))) +
+#   geom_col(show.legend = FALSE) +
+#   facet_wrap(~ topic, scales = "free") +
+#   coord_flip() + 
+#   theme_minimal()
+```
+
+```{r}
+# library(ggraph)
+# bigram_graph <- graph_from_data_frame(topword)
+# ggraph(bigram_graph, layout = "fr") +
+#   geom_edge_link() +
+#   geom_node_point() +
+#   geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+```
 
