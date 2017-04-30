@@ -8,11 +8,10 @@ library(formattable)
 library(gridExtra)
 library(dplyr)
 library(tidyr)
-library(reshape2)
 library(ggplot2)
-library(ggraph)
-library(plotly)
 library(readr)
+library(leaflet)
+library(leaflet.extras)
 ```
 
 ```{r read}
@@ -30,40 +29,8 @@ summary(df$mass)
 ```
 
 
-
-```{r bigmass}
-#convert coord to countries
-library(rworldmap)
-points=df %>% 
-  filter(mass > 18540) %>% 
-  select(reclat, reclong)
-
-coords2country = function(points)
-{  
-  countriesSP <- getMap(resolution='low')
-  #countriesSP <- getMap(resolution='high') #you could use high res map from rworldxtra if you were concerned about detail
-  
-  # convert our list of points to a SpatialPoints object
-  
-  # pointsSP = SpatialPoints(points, proj4string=CRS(" +proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0"))
-  
-  #setting CRS directly to that from rworldmap
-  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
-  
-  # use 'over' to get indices of the Polygons object containing each point 
-  indices = over(pointsSP, countriesSP)
-  
-  # return the ADMIN names of each country
-  indices$ADMIN  
-  #indices$ISO3 # returns the ISO3 code 
-  #indices$continent   # returns the continent (6 continent model)
-  #indices$REGION   # returns the continent (7 continent model)
-}
-points$country=coords2country(points)
-```
-
 ```{r classification}
-df10 <- df %>% left_join(points, by = c("reclat", "reclong")) %>%
+df10 <- df %>% #left_join(points, by = c("reclat", "reclong")) %>%
   arrange(desc(mass)) %>% 
   select(-c(id, GeoLocation)) %>%
   #mutate(class=ifelse(grepl("L/LL",recclass),"L/LL",recclass)) %>%
@@ -73,20 +40,12 @@ df10 <- df %>% left_join(points, by = c("reclat", "reclong")) %>%
   mutate(group =  ifelse(grepl("Mesosiderite",class)|grepl("Pallasite",class),"Mixture",
                          ifelse(grepl("Iron",class), "Iron","Stony")))
 write.csv(df10, 'df10.csv')
-```
-```{r}
-df10 %>% 
-  filter(year>=1760, country%in%c('Antarctica')) %>%
-  ggplot(aes(year, mass, fill=country)) + 
-  geom_dotplot(binaxis = "x", dotsize=0.3) + 
-  theme_void() +
-  theme(legend.position = 'None') +facet_wrap(~country)
-
+#customized scatter in tableau and transparent background with http://www194.lunapic.com/editor/
 ```
 
-```{r timeline}
-timeline <- df10 %>%
-  select(start_date=year, category=country, facet=country, content_text= mass)
-write.csv(timeline, 'timeline.csv')
+```{r heatmap}
+library(rgdal)
+df10 %>% leaflet() %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addHeatmap(lng=~reclong, lat=~reclat, radius=8)
 ```
-
