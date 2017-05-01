@@ -1,0 +1,77 @@
+---
+title: "collegefood"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=F, message=F}
+library(readr)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(tidytext)
+library(viridis)
+library(dplyr)
+library(tm)
+library(qdap)
+```
+
+```{r}
+collegefood <- read_csv("~/git_repo/opendata_viz/collegefood/collegefood.csv")
+```
+
+```{r}
+#lowercase, trim, strip punctuation, turn 'and' into separator except 'mac and cheese'
+df = collegefood %>% 
+  filter(!is.na(comfort_food_reasons_coded)) %>%
+  select(comfort_food_reasons_coded, comfort_food)%>%
+  mutate(comfort_food = strsplit(comfort_food,",")) %>%
+  unnest() %>%
+  mutate(comfort_food = strsplit(comfort_food,"/")) %>%
+  unnest() %>%
+  mutate(comfort_food = ifelse(grepl("mac",comfort_food),"mac and cheese", gsub("and | n ",replacement=", ",comfort_food)))%>%
+  mutate(comfort_food = strsplit(comfort_food,",")) %>%
+  unnest() %>%
+  mutate(comfort_food=removePunctuation(comfort_food),
+         comfort_food=tolower(comfort_food),
+         comfort_food=trimws(comfort_food))%>%
+  group_by(comfort_food_reasons_coded, comfort_food) %>%
+  summarise(n=n())
+write.csv(df[complete.cases(df), ], 'foodmood.csv')
+```
+
+```{r}
+top20comfort <- df %>% 
+  filter(comfort_food!='')%>% 
+  group_by(comfort_food) %>%
+  summarize(total=sum(n)) %>%
+  arrange(desc(total)) %>% head(20)
+```
+
+```{r}
+# 1 – stress
+# 2 – boredom
+# 3 – depression/sadness
+# 4 – hunger
+# 5 – laziness
+# 6 – cold weather
+# 7 – happiness 
+# 8- watching tv
+# 9 – none 
+temp= df %>% inner_join(top20comfort) 
+write.csv(temp,'temp.csv')
+```
+```{r}
+# library(igraph)
+# library(ggraph)
+# temp=temp[complete.cases(temp),]
+# edges=temp
+# vertices=data.frame(unique(temp$comfort_food_reasons_coded, temp$comfort_food))
+# graph <- graph_from_data_frame(edges, vertices)
+# set.seed(1)
+# ggraph(graph, 'circlepack', weight = 'size') + 
+#     geom_node_circle(aes(fill = depth), size = 0.25, n = 50) + 
+#     coord_fixed()
+```
+
+
+
