@@ -1,0 +1,112 @@
+---
+title: "diseases"
+output: html_document
+---
+
+
+```{r setup, include=FALSE, echo=F, message=F}
+library(readr)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(choroplethr)
+library(choroplethrMaps)
+library(viridis)
+library(dplyr)
+library(minimap)
+library(RColorBrewer)
+library(viridis)
+library(animation)
+```
+
+
+
+
+```{r read, echo=F, message=F}
+#data https://www.kaggle.com/pitt/contagious-diseases
+hepatitis <- read_csv("hepatitis.csv")
+mumps <- read_csv("mumps.csv")
+measles <- read_csv("measles.csv")
+#pertussis <- read_csv("pertussis.csv")
+polio <- read_csv("polio.csv")
+rubella <- read_csv("rubella.csv")
+smallpox <- read_csv("smallpox.csv")
+```
+
+```{r}
+df <- rbind(hepatitis, rubella, mumps, polio,measles, smallpox)%>%
+  # mutate(disease=factor(disease, 
+  #                       levels = c("hepatitis", "rubella", "mumps",
+  #                                  "polio", "measles", "smallpox")))%>% 
+  mutate(year = as.numeric(substr(week, 1, 4)), wk = substr(week, 5, 7)) %>%
+  mutate(decade = year - year%%10) %>%
+  complete(state, decade, disease)
+#use complete to show all states
+#pertusis contains gaps in data, not using them for doubts on its data collection
+```
+
+```{r heatmap}
+df%>%
+  group_by(year, disease) %>%
+  summarize(cases = sum(cases, na.rm=T)) %>%
+  filter(cases!=0) %>%
+  ggplot(aes(year, disease)) +
+  geom_tile(aes(fill = cases), col="white") +
+  scale_fill_viridis() +
+  theme_minimal() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5, size=6))
+
+```
+
+
+```{r staticbyyears}
+old_mai <- par()$mai
+par(mai = c(0, 0, .75, .5), mfrow = c(3, 3))
+for (i in seq(from = 1920, to = 2000, by = 10)) {
+df = df_agg%>%
+      filter(decade==i, disease=='MEASLES') %>%
+  mutate(incidence = cut_interval(incidence, n=10))
+colors=viridis(10)[df$incidence]
+miniusa(df$state,  colors)
+title(i)
+}
+mtext("Measle incidence in US", outer = TRUE, side = 3, line = -2)
+
+par(mai = old_mai, mfrow = c(1, 1))
+
+```
+
+
+```{r animation}
+#summarize week into decades
+df_agg <- df %>% 
+  group_by(decade, state, disease) %>%
+  summarize(cases = sum(cases))
+
+saveGIF(
+  {
+    for (i in seq(from = 1920, to = 2000, by = 10)) {
+      old_mai <- par()$mai
+      par(mai = c(0, 0, .75, .5), mfrow = c(2, 3))
+      for (k in unique(df_agg$disease)) {
+        plt = df_agg %>%
+          filter(disease == k) %>%
+          filter(decade == i)
+        plt$cases = ifelse(is.na(plt$cases),0,cut_interval(plt$cases, n=20))
+        colors=ifelse(plt$cases==0, "grey80",viridis(20)[plt$cases])
+        miniusa(plt$state, colors)
+        title(k)
+        }
+        par(mai = old_mai, mfrow = c(1, 1))
+              mtext(paste0("Cases of Contagious Disease ",i), 
+                    outer = TRUE, side = 3, line = -1.2,
+                    cex = 1.2)
+              }
+        }
+      , movie.name = "disease.gif", interval = 1, nmax = 30,
+      ani.width=850, ani.height=500)
+#need to use ifelse to deal with NA and O cases else cut_interval will throw error
+```
+
+
+
