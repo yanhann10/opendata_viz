@@ -1,0 +1,57 @@
+---
+title: "foodsafety"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=F, message=F}
+library(readr)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(tidytext)
+library(viridis)
+library(ggbeeswarm)
+library(dplyr)
+
+```
+
+```{r input, include=FALSE, echo=F, message=F}
+#data on foodborne disease outbreaks from https://www.kaggle.com/cdc/foodborne-diseases
+df <- read_csv("~/git_repo/opendata_viz/foodpoison/foodpoison.csv")
+```
+```{r preprocess}
+df <- df %>%
+  mutate(cause = ifelse(grepl('Listeria', Species),'Listeria',
+         ifelse(grepl('Salmonella', Species),'Salmonella',
+         ifelse(grepl('Escherichia coli', Species),'E. coli',
+         ifelse(grepl('Clostridium', Species),'Clostridium',
+         ifelse(grepl('Mycotoxins', Species),'Mycotoxins',
+         ifelse(grepl('Rotavirus', Species),'Rotavirus',
+         ifelse(grepl('Norovirus', Species),'Norovirus',
+         ifelse(grepl('Hepatitis A', Species),'Hepatitis A',
+         ifelse(grepl('Shigella', Species),'Shigella',
+         ifelse(grepl('Cyclospora', Species),'Cyclospora',
+         ifelse(grepl('Vibrio', Species),'Vibrio',
+         ifelse(grepl('Scombroid', Species),'Scombroid',
+         ifelse(grepl('Staphylococcus', Species),'Staphylococcus',
+         ifelse(grepl('Bacillus', Species),'Bacillus cereus',
+         ifelse(grepl('Campylobacter', Species),'Campylobacter jejuni',
+         ifelse(grepl('Ciguatoxin', Species),'Ciguatoxin',
+         ifelse(grepl('Virus', Species),'Virus',
+                'others'
+                )))))))))))))))))) %>%
+  mutate(food=ifelse(grepl(';',Food), 'Multi',
+                     Food)) %>%
+  separate(food, c("food1", "food2"), sep=',')
+#temp=df%>%filter(cause=='others')%>%select(Species)%>%table()
+#write.csv(df, 'foodpoison_cleaned.csv')
+```
+
+
+```{r initial}
+df%>% #filter(!is.na(Fatalities), Fatalities!=0) %>% 
+  group_by(food1) %>% summarize(n=sum(Fatalities, na.rm=T)) %>%arrange(desc(n))
+```
+
+
+
