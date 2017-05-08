@@ -3,6 +3,21 @@
 title: "Academic Tools"
 output: html_document
 ---
+```{r}
+# to-do
+# change tool abbre to full spelling
+# add annotation to tool category
+# normalize counts
+# add relation between tools
+# 
+# questions:
+#   most common tools by fields
+#   shareability among fields
+#   tools shared by fields
+#   core tools unique to a fields
+#   transferable skills: which discipline share unique tools
+```
+
 
 ```{r message=FALSE, warning=FALSE}
 library(dplyr)
@@ -10,14 +25,40 @@ library(ggplot2)
 library(reshape2)
 library(formattable)
 library(RColorBrewer)
-library(vcd)
+library(tidyr)
+library(viridis)
+library(stringr)
+#library(vcd)
 col=rev(brewer.pal(10,'PiYG'))
-survey_cleaned <- read.csv("~/Downloads/101-innovations-research-tools-survey/survey_cleaned.csv", stringsAsFactors=FALSE)
-survey_cleaned$PUBYEAR=as.factor(survey_cleaned$PUBYEAR)
-levels(survey_cleaned$PUBYEAR)=c("","before 1991","1991-2000","2001-2005","2006-2010","2011-2016","I haven't published (yet)")
+survey_cleaned <- read.csv("academic_tools.csv", stringsAsFactors=FALSE)
+variable_list <- read_csv("variable_list.csv")
+
 ```
+
+```{r preprocessing}
+
+survey_cleaned <- survey_cleaned %>%
+  mutate(ROLE = ifelse(ROLE%in%c("PhD student","Postdoc"), "PhD/Postdoc",
+                ifelse(grepl("prof",ROLE),"Professor",ROLE))) %>%
+  mutate(PUBYEAR = as.factor(PUBYEAR), ROLE = as.factor(ROLE))
+levels(survey_cleaned$PUBYEAR) = c("","before 1991","1991-2000","2001-2005","2006-2010","2011-2016","I haven't published (yet)")
+levels(survey_cleaned$ROLE) = c("Bachelor/Master student", "PhD/Postdoc", "Professor", 
+                         "Industry / Government","Librarian", "Publisher", "Other")
+dict <- variable_list %>%
+  separate(`full name / survey question`, c("question", "tool"), sep='-') %>%
+  mutate(usage=ifelse(grepl("What tools/sites do you use to", question), 
+                      substr(question, 31, nchar(question)), 
+                      ifelse(grepl("What researcher profiles do you use", question),
+                             "researcher profiles",
+                             ifelse(grepl("reference management", question),
+                                    "reference management",
+                                    ifelse(grepl("peer review", question),
+                                           "peer review", "")))))%>%
+  select(field=`variable name`, usage, tool) 
+```
+
 Who were surveyed?
-```{r}
+```{r role}
 survey_cleaned%>%
   group_by(ROLE)%>%
   summarise(count=n())%>%
@@ -27,7 +68,7 @@ survey_cleaned%>%
     align = 'l') 
 ```
 Anyone cross-disciplinary?
-```{r}
+```{r crossdisciplinary}
 quantify=function(x) ifelse(nchar(x) > 0, 1, 0)
 
 survey=survey_cleaned%>%
@@ -49,41 +90,61 @@ df2=survey%>%
 whichfield=function(x) colnames(df2)[[which(x==1)]]
 df2$field=apply(df2,1,whichfield)
 
+#understand the field of the survey participant
 df3=df2%>%
   select(-c(1:7))%>%
-  bind_cols(survey)%>%
-  filter(ROLE=='Professor / Associate professor / Assistant professor')
+  bind_cols(survey)
+  #filter(ROLE=='Professor / Associate professor / Assistant professor')
 ```
 
 Which fields has the most records
 ```{r}
 freqfield=df3%>%
-  group_by(field,PUBYEAR)%>%
+  group_by(field, ROLE)%>%
   summarize(num=n())%>%
   arrange(desc(num))
 ```
+
 Count number of tool usage
-```{r}
+```{r usagewithinfield}
+#freq to tool usage withint each field
 toolset=df3%>%
-  select(-matches("SPECCL"))%>%
-  mutate_each(funs(quantify),GSCHOLSEARCH:IMPACTOTHCL)%>%
-  select(c(field,PUBYEAR,GSCHOLSEARCH:IMPACTOTHCL))%>%
-  filter(PUBYEAR!="")%>%
-  group_by(field,PUBYEAR)%>%
-  mutate_each(funs(sum))%>%
-  melt(id=c("field","PUBYEAR"))%>%
-  left_join(freqfield,by=c('field','PUBYEAR'))%>%
-  mutate(freq=value/num)
+  select(-matches("SPECCL")) %>%
+  mutate_each(funs(quantify),GSCHOLSEARCH:IMPACTOTHCL) %>%
+  select(c(field,ROLE, GSCHOLSEARCH:IMPACTOTHCL)) %>%
+  group_by(field, ROLE ) %>%
+  summarise_each(funs(sum)) %>%
+  melt(id=c("field","ROLE")) %>%
+  left_join(dict, by = c('variable' = 'field')) %>%
+  left_join(freqfield,by=c('field','ROLE')) %>%
+  mutate(freq=value/num) %>%
+  na.omit() %>%
+  select(1,2,5,6,7,8)
 head(toolset)  
+#note how to join on different col names in dplyr
 ```  
 Visualize tools used by academic field
+
 ```{r,fig.width=12,fig.height=20}
-ggplot(toolset, aes(field,variable)) + 
-geom_tile(aes(fill = freq), colour = "white") +facet_grid(~PUBYEAR)+
-scale_fill_gradientn(colours = col)+ 
-coord_fixed(ratio = 1)+
-theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
-theme(axis.title.y=element_blank(),axis.title.x=element_blank())
+#interaction(tool, usage, lex.order = TRUE)
+png("tools.png", width = 1000, height = 2000)
+ggplot(toolset, aes(field, tool)) + 
+geom_tile(aes(fill = freq), colour = "white") +
+facet_grid(str_wrap(usage,10)~ROLE, scales = "free_y", space = "free_y") +
+scale_fill_viridis(option='C') + 
+coord_fixed(ratio = 1) +
+theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+theme(axis.title.y=element_blank(),axis.title.x=element_blank(), legend.position = 'None',
+      axis.text.y = element_text(size=14),
+      plot.title = element_text(face="bold",hjust = 0.5),
+      strip.text.y = element_text(angle=0)) +
+  ggtitle('Academic Tools by Disciplines and Roles')
+
+dev.off()
+```
+```{r}
+#temp=toolset%>%group_by(field,variable)%>%summarize(value=sum(value))
+write.csv(temp,'temp.csv')
 ```
 
 Prevalent tools used by all include word, Acrobat PDF Reader, Insitutional Access, Google Scholar. Excel is also common except in Law.  
