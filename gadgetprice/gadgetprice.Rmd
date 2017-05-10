@@ -1,0 +1,71 @@
+---
+title: ""
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(tidyr)
+library(ggplot2) # Data visualization
+library(viridis)
+library(RColorBrewer)
+library(lubridate)
+library(plotly)
+library(dplyr)
+library(ggbeeswarm)
+library(countrycode)
+```
+
+```{r input, message=FALSE}
+df<- read_csv("gadgetprice.csv")
+glimpse(df)
+```
+
+```{r preprocessing}
+gadget <- df %>% 
+  select(-`Portable charger`) %>%
+  filter(Country!='Venezuala') %>%
+  gather(key, value, -Rank, -Country)%>%
+  mutate(value=gsub("\\$","",value))%>%
+  mutate(value=as.numeric(value), region=countrycode(Country, 'country.name', 'continent'))
+#write.csv(gadget,'gadget.csv')
+```
+```{r}
+is_maxmin <- function(x) {
+  return(x == min(x, na.rm=T) | x == max(x, na.rm=T) )
+}
+```
+```{r}
+gadget<-gadget %>%
+  group_by(key) %>%
+  mutate(maxmin = ifelse(is_maxmin(value), value, as.numeric(NA))) %>%
+  mutate(maxmincountry = ifelse(is.na(maxmin),"",Country))
+```
+
+```{r}
+library(ggbeeswarm)
+library(stringr)
+gadget %>%
+ggplot(aes(key, value)) + 
+geom_beeswarm(aes(col=region, alpha=0.9)) + 
+theme_minimal() +
+coord_flip() +
+theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
+      plot.title=element_text(family="Helvetica", face="bold", size=16),
+      text=element_text(family="Helvetica")) +
+  labs(title = "Price of gadgets",
+         subtitle = "countries with highest and lowest price in gadgets")+
+  geom_text(aes(label=str_wrap(maxmincountry, 10)), cex=3, vjust=-0.5) +
+  guides(alpha=FALSE)
+ # +geom_label(aes(label=maxmincountry,fill = factor(region)), colour = "white", fontface = "bold")
+
+```
+
+
+```{r}
+sessionInfo()
+```
+
