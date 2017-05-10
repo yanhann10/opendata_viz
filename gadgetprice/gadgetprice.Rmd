@@ -20,25 +20,29 @@ library(countrycode)
 ```
 
 ```{r input, message=FALSE}
+#kaggle data 2016-17 https://www.kaggle.com/ikalats/TechnologyPriceIndex
 df<- read_csv("gadgetprice.csv")
+# purchasing power 2014 http://www.nationmaster.com/country-info/stats/Cost-of-living/Local-purchasing-power#
+purchasingpower <- read_csv("purchasingpower.csv")
 glimpse(df)
 ```
 
 ```{r preprocessing}
+#remove thousands separator
 gadget <- df %>% 
+  filter(Country!='Venezuela')%>%
   select(-`Portable charger`) %>%
-  filter(Country!='Venezuala') %>%
   gather(key, value, -Rank, -Country)%>%
-  mutate(value=gsub("\\$","",value))%>%
-  mutate(value=as.numeric(value), region=countrycode(Country, 'country.name', 'continent'))
+  mutate(value=gsub(",","",value), value=gsub("\\$","",value))%>%
+  mutate(value=as.numeric(value), region=countrycode(Country, 'country.name', 'continent')) %>%
+  mutate(region = ifelse(Country=='Uruaguay','Americas',region))
 #write.csv(gadget,'gadget.csv')
 ```
 ```{r}
 is_maxmin <- function(x) {
   return(x == min(x, na.rm=T) | x == max(x, na.rm=T) )
 }
-```
-```{r}
+
 gadget<-gadget %>%
   group_by(key) %>%
   mutate(maxmin = ifelse(is_maxmin(value), value, as.numeric(NA))) %>%
@@ -54,16 +58,45 @@ geom_beeswarm(aes(col=region, alpha=0.9)) +
 theme_minimal() +
 coord_flip() +
 theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
-      plot.title=element_text(family="Helvetica", face="bold", size=16),
-      text=element_text(family="Helvetica")) +
+      plot.title=element_text(face="bold", size=16),
+      axis.text=element_text(face="bold"),
+      text=element_text(family="Helvetica"),
+      plot.background = element_rect(fill = 'ghostwhite',color='white')) +
   labs(title = "Price of gadgets",
-         subtitle = "countries with highest and lowest price in gadgets")+
+         subtitle = "countries with highest and lowest price (USD) in gadgets")+
   geom_text(aes(label=str_wrap(maxmincountry, 10)), cex=3, vjust=-0.5) +
   guides(alpha=FALSE)
  # +geom_label(aes(label=maxmincountry,fill = factor(region)), colour = "white", fontface = "bold")
 
 ```
 
+```{r globalmedianprice}
+medianprice = gadget %>% group_by(key) %>%
+  mutate(medprice = median(value)) %>% ungroup() %>%
+  mutate(above_global_median = ifelse(value>=medprice, 1, 0)) %>%
+  group_by(region, key) %>%
+  summarize(pct = mean(above_global_median), group = 'above') 
+medianprice = medianprice %>% mutate(pct = - (1-  pct), group = 'below') %>% rbind(medianprice)
+
+medianprice %>% ggplot(aes(x=region, y=pct, fill=region)) + 
+  facet_wrap(~key)+
+  geom_bar(stat="identity", position="identity", width=0.8) + 
+  geom_abline(aes(slope=0, intercept=0)) + 
+  theme_minimal() +
+  theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
+      plot.title=element_text(face="bold", size=16),
+      axis.text.x=element_blank(),
+      text=element_text(family="Helvetica"),
+      plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Gadget price benchmark by continents",
+         subtitle = "Regional level % of countries with price above and below global median, each bar adds up to one") 
+```
+
+```{r purchasingpower}
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+library("scales")
+rescale(s)
+```
 
 ```{r}
 sessionInfo()
