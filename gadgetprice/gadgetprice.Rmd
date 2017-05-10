@@ -17,6 +17,7 @@ library(plotly)
 library(dplyr)
 library(ggbeeswarm)
 library(countrycode)
+library(stringr)
 ```
 
 ```{r input, message=FALSE}
@@ -27,8 +28,9 @@ purchasingpower <- read_csv("purchasingpower.csv")
 glimpse(df)
 ```
 
-```{r preprocessing}
+```{r preprocessing, message=FALSE}
 #remove thousands separator
+#dollar sign need to be escaped
 gadget <- df %>% 
   filter(Country!='Venezuela')%>%
   select(-`Portable charger`) %>%
@@ -38,20 +40,14 @@ gadget <- df %>%
   mutate(region = ifelse(Country=='Uruaguay','Americas',region))
 #write.csv(gadget,'gadget.csv')
 ```
-```{r}
-is_maxmin <- function(x) {
-  return(x == min(x, na.rm=T) | x == max(x, na.rm=T) )
-}
-
+```{r, message=FALSE}
 gadget<-gadget %>%
   group_by(key) %>%
-  mutate(maxmin = ifelse(is_maxmin(value), value, as.numeric(NA))) %>%
+  mutate(maxmin = ifelse(value==max(value)|value==min(value),value, as.numeric(NA))) %>%
   mutate(maxmincountry = ifelse(is.na(maxmin),"",Country))
 ```
 
 ```{r}
-library(ggbeeswarm)
-library(stringr)
 gadget %>%
 ggplot(aes(key, value)) + 
 geom_beeswarm(aes(col=region, alpha=0.9)) + 
@@ -63,16 +59,16 @@ theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
       text=element_text(family="Helvetica"),
       plot.background = element_rect(fill = 'ghostwhite',color='white')) +
   labs(title = "Price of gadgets",
-         subtitle = "countries with highest and lowest price (USD) in gadgets")+
+        subtitle = "countries with highest and lowest price (USD) in gadgets")+
   geom_text(aes(label=str_wrap(maxmincountry, 10)), cex=3, vjust=-0.5) +
   guides(alpha=FALSE)
- # +geom_label(aes(label=maxmincountry,fill = factor(region)), colour = "white", fontface = "bold")
-
 ```
 
 ```{r globalmedianprice}
-medianprice = gadget %>% group_by(key) %>%
-  mutate(medprice = median(value)) %>% ungroup() %>%
+medianprice = gadget %>% 
+  group_by(key) %>%
+  mutate(medprice = median(value)) %>% 
+  ungroup() %>%
   mutate(above_global_median = ifelse(value>=medprice, 1, 0)) %>%
   group_by(region, key) %>%
   summarize(pct = mean(above_global_median), group = 'above') 
@@ -93,9 +89,30 @@ medianprice %>% ggplot(aes(x=region, y=pct, fill=region)) +
 ```
 
 ```{r purchasingpower}
-range01 <- function(x){(x-min(x))/(max(x)-min(x))}
 library("scales")
-rescale(s)
+library(ggrepel)
+temp = gadget%>%
+  group_by(Country, region) %>%
+  mutate(value2=rescale(value))%>%
+  summarize(gadgetpriceindex = mean(value2)) %>%
+  ungroup %>%
+  mutate(gadgetpriceindex = rescale(gadgetpriceindex))
+purchasingpower <- purchasingpower %>% 
+  mutate(Country = recode_factor(Country, "United States"="USA", "United Kingdom"="UK",
+                                 "Uruguay"="Uruaguay"))%>% 
+  mutate(purchasingpower = rescale(Amount)) 
+combined = temp %>% left_join(purchasingpower, by='Country')
+
+combined%>%
+ggplot(aes(gadgetpriceindex, purchasingpower)) + 
+geom_point(aes(color=region)) +
+theme_minimal() +
+geom_text_repel(aes(label=Country, color=region), size=3) +
+  theme(
+      plot.title=element_text(face="bold", size=16),
+      text=element_text(family="Helvetica"),
+      plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Gadget price vs purchasing power by country") 
 ```
 
 ```{r}
