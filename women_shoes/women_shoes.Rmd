@@ -1,0 +1,181 @@
+---
+title: "women_shoes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(formattable)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(ggraph)
+library(plotly)
+library(readr)
+library(tidytext)
+library(stringr)
+```
+
+```{r read, echo=F, message=F}
+df <- read_csv("women_shoes.csv")
+
+```
+
+
+
+```{r cleaning}
+#use text mining to eliminate non-shoes
+stop_words_plus <- stop_words %>%
+  rbind(word=c('women','women\'s', 'womens'),lexicon='custom')
+df %>% 
+  select(name) %>%
+  unnest_tokens(word, name)%>%
+  anti_join(stop_words_plus)%>%
+  count(word, sort = TRUE)
+  
+```
+```{r clean}
+#filter out non-shoe items/brand and pre-owned items
+nonshoes <- c('pants','jeans', 'jacket','cardigan', 'dress', 'bra','underwire','wirefree','bikini','swim','lingerie','thong','slippers','pantyhose','hairpin',
+              'swimsuit','swimwear','scarf','glove','leggings','eyewear','Sunglasses',"Costume",
+              'dress','blazer','men\'s', 'skirt','coat','top','socks','Doll','sleepwear','makeup',
+              'bracelet','necklace','jewelry','diamond','band','ring','watch','Parka','lens')
+df_clean <- df %>% 
+  filter(!brand %in% c('TwoBirch','TBJE Wedding Bands','Yours Clothing','Brioni','GEMaffair',
+                       'TheBeJeweledEgg Rings','Studs Galore','Techno-Marine','LUXURMAN',
+                       'TBJE Slide Pendants','Peacock Diamonds','JUNGHANS','Ddi'), 
+         !is.na(brand))%>% 
+  filter(!grepl(paste(nonshoes, collapse = "|"),name, ignore.case = T)) %>%
+  mutate(prices.amountMin=as.numeric(prices.amountMin)) #%>%
+  #filter(prices.condition !='Pre-owned')
+#   filter(grepl('new|New', prices.condition))
+#table(df_clean$prices.condition)
+#temp=df_clean%>%filter(brand=='Canada Goose') %>%select(name)
+```
+```{r brand}
+summary(df_clean$prices.amountMin)
+   # Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+   # 0.01   26.95   49.61  106.17   89.00 2300.00       7 
+df_clean <- df_clean %>% 
+  mutate(level = cut(prices.amountMin, breaks=c(0,30,90,2300),
+                     labels=c('low-end','mid-range','high-end')))  
+df_brand = df_clean %>% 
+  group_by(level, brand) %>%
+  summarize(med.price = median(prices.amountMin), min.price=min(prices.amountMin), max.price=max(prices.amountMin), num_shoes=n_distinct(id)) %>%
+  arrange(desc(med.price))
+```
+
+```{r linerange}
+
+df_brand %>%
+    filter(level=='high-end')%>%
+    head(20)%>%
+    ggplot(aes(reorder(brand, med.price))) +
+    geom_linerange(aes(ymin = min.price, ymax = max.price)) + 
+    geom_point(aes(y = med.price), size = 2) +
+    coord_flip() +
+    theme_minimal() +
+    theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
+    plot.title=element_text(face="bold", size=16),
+    axis.text=element_text(face="bold"),
+    text=element_text(family="Helvetica"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+    labs(title = "High-end shoes price range",
+      subtitle = "")
+
+```
+```{r sampleset}
+#sample shoes from higher price range of each price level
+sample = df_clean %>% 
+  filter(!is.na(level),!is.na(imageURLs),!grepl('net',imageURLs),!grepl('ebayimg',imageURLs)) %>% 
+  group_by(level, brand) %>%
+  filter(row_number(name) == 1) %>%
+  arrange(desc(prices.amountMin)) %>% 
+  group_by(level) %>% 
+  select(brand, name, imageURLs, prices.amountMin) %>% slice(1:5) 
+
+```
+
+```{r getimage}
+library(imager)
+get.image <- function(i){
+  download.file(i,'shoes.jpg', mode = 'wb')
+  img = load.image('shoes.jpg')
+  img = resize(img, size_x = 150, size_y = 150)
+  plot(img, axes=FALSE)}
+
+par(mfrow=c(3,5), mar=c(.1,.1,.1,.1))
+for (i in 1:15) {
+  try({get.image(sample$imageURLs[i])
+  text(10, 10, col="black", cex=1, paste(sample$brand[i]))
+  text(10, 20, col="black", cex=1, paste(sample$prices.amountMin[i]))
+  text(10, 30, col="black", cex=1, paste(sample$level[i]))
+  })
+}
+
+
+```
+
+
+```{r diffusion}
+diffusion = c('ralph lauren','michael kors','marc jacobs','calvin klein','chloe')
+df_diffusion = df_clean %>%
+  filter(grepl(paste(diffusion, collapse = "|"), brand, ignore.case = T),
+         !grepl('Polo|Chase & Chloe|Chase + Chloe',brand)) %>%
+  mutate(brand=recode(brand, 'Calvin Klein CK'='CK by Calvin Klein', 
+                'MICHAEL Michael Kors'='Michael Michael Kors',
+                'Lauren by Ralph Lauren'='Lauren Ralph Lauren',
+                'Lauren By Ralph Lauren'='Lauren Ralph Lauren',
+                'Ralph by Ralph Lauren'='Lauren Ralph Lauren',
+                'RALPH LAUREN'='Ralph Lauren',
+                'See By Chloe'='See by Chloe')) %>%
+  mutate(brand=factor(brand, levels=c('Chloe',
+                                         'Calvin Klein',
+                                         'Ralph Lauren',
+                                         'Marc Jacobs',
+                                         'Michael Kors',
+                                         'See by Chloe',
+                                         'CK by Calvin Klein',
+                                         'Lauren Ralph Lauren',
+                                         'Marc By Marc Jacobs',
+                                         'Michael Michael Kors')))
+  table(df_diffusion$brand)
+```
+```{r}
+# df_diffusion %>% group_by(brand) %>%
+#   summarize(med.price=median(prices.amountMin))
+
+sample_diffusion = df_diffusion %>% 
+  filter(!is.na(brand),!is.na(imageURLs),!grepl('net',imageURLs),!grepl('ebayimg',imageURLs)) %>% 
+  group_by(brand) %>%
+  filter(row_number(name) == 1) %>%
+  arrange(desc(prices.amountMin)) %>% 
+  group_by(brand) %>% 
+  select(brand, name, imageURLs, prices.amountMin) %>% slice(1:5) 
+
+par(mfrow=c(2,4), mar=c(.1,.1,.1,.1))
+for (i in 1:10) {
+  try({get.image(sample_diffusion$imageURLs[i])
+  text(10, 10, col="black", cex=1, paste(sample_diffusion$brand[i]), adj=0)
+  text(10, 20, col="black", cex=1, paste(sample_diffusion$prices.amountMin[i]), adj=0)
+
+  })
+}
+
+```
+
+
+```{r saleprice}
+#same id could have multiple brand, prices.merchant?
+df_smry = df_clean %>%
+  group_by(id, name,brand) %>%
+  summarize(min.price = min(prices.amountMin), max.price = max(prices.amountMin),
+            price.difference=max.price-min.price) 
+df_smry%>%
+  ggplot(aes(price.difference)) + 
+  geom_density() + 
+  theme_minimal() 
+  
+```
+
