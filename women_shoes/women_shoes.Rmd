@@ -3,7 +3,7 @@ title: "women_shoes"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, echo=F, message=F}
 library(formattable)
 library(gridExtra)
 library(dplyr)
@@ -99,8 +99,8 @@ sample = df_clean %>%
 
 ```{r getimage}
 library(imager)
-get.image <- function(i){
-  download.file(i,'shoes.jpg', mode = 'wb')
+get.image <- function(url){
+  download.file(url,'shoes.jpg', mode = 'wb')
   img = load.image('shoes.jpg')
   img = resize(img, size_x = 150, size_y = 150)
   plot(img, axes=FALSE)}
