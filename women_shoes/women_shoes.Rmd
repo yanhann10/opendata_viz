@@ -27,11 +27,11 @@ df <- read_csv("women_shoes.csv")
 ```{r cleaning}
 #use text mining to eliminate non-shoes
 stop_words_plus <- stop_words %>%
-  rbind(word=c('women','women\'s', 'womens'),lexicon='custom')
+  rbind(word = c('women','women\'s', 'womens'),lexicon='custom')
 df %>% 
   select(name) %>%
-  unnest_tokens(word, name)%>%
-  anti_join(stop_words_plus)%>%
+  unnest_tokens(word, name) %>%
+  anti_join(stop_words_plus) %>%
   dplyr::count(word, sort = TRUE)
   
 ```
@@ -47,11 +47,8 @@ df_clean <- df %>%
                        'TBJE Slide Pendants','Peacock Diamonds','JUNGHANS','Ddi'), 
          !is.na(brand))%>% 
   filter(!grepl(paste(nonshoes, collapse = "|"),name, ignore.case = T)) %>%
-  mutate(prices.amountMin=as.numeric(prices.amountMin)) #%>%
-  #filter(prices.condition !='Pre-owned')
-#   filter(grepl('new|New', prices.condition))
-#table(df_clean$prices.condition)
-#temp=df_clean%>%filter(brand=='Canada Goose') %>%select(name)
+  mutate(prices.amountMin=as.numeric(prices.amountMin)) %>%
+  filter(prices.condition !='Pre-owned')
 ```
 ```{r brand}
 summary(df_clean$prices.amountMin)
@@ -62,24 +59,26 @@ df_clean <- df_clean %>%
                      labels=c('low-end','mid-range','high-end')))  
 df_brand = df_clean %>% 
   group_by(level, brand) %>%
-  summarize(med.price = median(prices.amountMin), min.price=min(prices.amountMin), max.price=max(prices.amountMin), num_shoes=n_distinct(id)) %>%
+  summarize(med.price = median(prices.amountMin), 
+            min.price = min(prices.amountMin), max.price = max(prices.amountMin), 
+            num_shoes = n_distinct(id)) %>%
   arrange(desc(med.price))
 ```
 
 ```{r linerange}
-
+#find top high-end brands and their price range
 df_brand %>%
-    filter(level=='high-end')%>%
-    head(20)%>%
+    filter(level=='high-end') %>%
+    head(20) %>%
     ggplot(aes(reorder(brand, med.price))) +
     geom_linerange(aes(ymin = min.price, ymax = max.price)) + 
     geom_point(aes(y = med.price), size = 2) +
     coord_flip() +
     theme_minimal() +
-    theme(axis.title.y=element_blank(),axis.title.x=element_blank(),
-    plot.title=element_text(face="bold", size=16),
-    axis.text=element_text(face="bold"),
-    text=element_text(family="Helvetica"),
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    text = element_text(family = "Helvetica"),
     plot.background = element_rect(fill = 'ghostwhite',color='white')) +
     labs(title = "High-end shoes price range",
       subtitle = "")
@@ -99,13 +98,13 @@ sample = df_clean %>%
 
 ```{r getimage}
 library(imager)
-get.image <- function(url){
+get.image <- function(url) {
   download.file(url,'shoes.jpg', mode = 'wb')
   img = load.image('shoes.jpg')
   img = resize(img, size_x = 150, size_y = 150)
   plot(img, axes=FALSE)}
 
-
+#plot image, brand, price
 par(mfrow=c(3,5), mar=c(.1,.1,.1,.1))
 for (i in 1:15) {
   try({get.image(sample$imageURLs[i])
@@ -122,18 +121,19 @@ for (i in 1:15) {
 
 
 ```{r diffusion}
+#find diffusion brand of main lines
 diffusion = c('ralph lauren','michael kors','marc jacobs','calvin klein','chloe')
 df_diffusion = df_clean %>%
   filter(grepl(paste(diffusion, collapse = "|"), brand, ignore.case = T),
          !grepl('Polo|Chase & Chloe|Chase + Chloe',brand)) %>%
-  mutate(brand=recode(brand, 'Calvin Klein CK'='CK by Calvin Klein', 
+  mutate(brand = recode(brand, 'Calvin Klein CK'='CK by Calvin Klein', 
                 'MICHAEL Michael Kors'='Michael Michael Kors',
                 'Lauren by Ralph Lauren'='Lauren Ralph Lauren',
                 'Lauren By Ralph Lauren'='Lauren Ralph Lauren',
                 'Ralph by Ralph Lauren'='Lauren Ralph Lauren',
                 'RALPH LAUREN'='Ralph Lauren',
                 'See By Chloe'='See by Chloe')) %>%
-  mutate(brand=factor(brand, levels=c('Chloe',
+  mutate(brand = factor(brand, levels=c('Chloe',
                                          'Calvin Klein',
                                          'Ralph Lauren',
                                          'Marc Jacobs',
@@ -155,24 +155,25 @@ sample_diffusion = df_diffusion %>%
   filter(row_number(name) == 1) %>%
   arrange(desc(prices.amountMin)) %>% 
   group_by(brand) %>% 
-  select(brand, name, imageURLs, prices.amountMin) %>% slice(1:5) 
+  select(brand, name, imageURLs, prices.amountMin) %>% 
+  slice(1:5) 
 
 par(mfrow=c(2,4), mar=c(.1,.1,.1,.1))
 for (i in 1:10) {
   try({get.image(sample_diffusion$imageURLs[i])
-  text(10, 10, col="black", cex=1, paste(sample_diffusion$brand[i]), adj=0)
-  text(10, 20, col="black", cex=1, paste(sample_diffusion$prices.amountMin[i]), adj=0)
+  text(10, 10, col = "black", cex = 1, paste(sample_diffusion$brand[i]), adj=0)
+  text(10, 20, col = "black", cex = 1, paste(sample_diffusion$prices.amountMin[i]), adj=0)
 
   })
 }
 
 ```
 ```{r colors}
-df_color= df_clean%>%
-  filter(!is.na(colors))%>%
-  group_by(colors)%>%
+df_color= df_clean %>%
+  filter(!is.na(colors)) %>%
+  group_by(colors) %>%
   dplyr::summarize(n=n()) %>%
-  arrange(desc(n))%>%
+  arrange(desc(n)) %>%
   head(10)
 
 df_color %>%
@@ -199,20 +200,20 @@ patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
 }
 
 df_type <- df_clean %>% 
-  mutate(type=patternreplace(name, 
+  mutate(type = patternreplace(name, 
                              c('flat','mocassin','moccasin','loafer', 'Espadrille','boot',
                                 'heel','Mary Janes', 'gladiator','stiletto','wedge','pump',
                                 'sneaker','running shoe','trainer','sandal','slipper','mule','clog'),
                              c('flats','flats','flats','flats','flats','boots',
                                'heels','heels','gladiators','stilettos','wedges','pumps',
                                'sneakers','sneakers','sneakers','sandal','sandal','sandal','sandal')))
-temp=df_type%>%filter(is.na(type))%>%select(name)
+#temp=df_type%>%filter(is.na(type))%>%select(name)
 ```
 ```{r}
 df_type %>% 
-  filter(colors%in%df_color$colors)%>% 
+  filter(colors %in% df_color$colors) %>% 
 group_by(colors, type) %>%
-dplyr::summarize(n = n())%>%
+dplyr::summarize(n = n()) %>%
 ggplot(aes(colors, type)) + 
 geom_tile(aes(fill = n), colour = "white") +
 theme_minimal() 
@@ -222,7 +223,7 @@ temp=df_type%>%dplyr::filter(colors=='Gold',type=='boots')
 ```{r samplecolor}
 #sample shoes from higher price range of each price level
 sample_color = df_type %>% 
-  filter(colors%in%df_color$colors)%>% 
+  filter(colors%in%df_color$colors) %>% 
   filter(!is.na(type), !is.na(colors),
          !is.na(imageURLs),
          !grepl('net',imageURLs),!grepl('ebayimg',imageURLs)) %>% 
@@ -233,14 +234,13 @@ sample_color = df_type %>%
 table(sample_color$colors, sample_color$type)
 ```
 ```{r color}
+#top color of shoes
 sample_color=sample_color %>%
   filter(!grepl('boot|pump|wedge',type))
 par(mfrow=c(10,5), mar=c(.1,.1,.1,.1))
 for (i in 1:50) {
   try({get.image(sample_color$imageURLs[i])
   text(12, 10, col="black", cex=1, paste(sample_color$prices.amountMin[i]), adj=0)
-  #text(10, 20, col="black", cex=1, paste(sample_color$type[i]), adj=0)
-
   })
 }
 ```
