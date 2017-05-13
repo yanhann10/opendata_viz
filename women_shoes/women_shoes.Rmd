@@ -18,8 +18,8 @@ library(stringr)
 ```
 
 ```{r read, echo=F, message=F}
+#https://www.kaggle.com/datafiniti/womens-shoes-prices
 df <- read_csv("women_shoes.csv")
-
 ```
 
 
@@ -32,12 +32,12 @@ df %>%
   select(name) %>%
   unnest_tokens(word, name)%>%
   anti_join(stop_words_plus)%>%
-  count(word, sort = TRUE)
+  dplyr::count(word, sort = TRUE)
   
 ```
 ```{r clean}
 #filter out non-shoe items/brand and pre-owned items
-nonshoes <- c('pants','jeans', 'jacket','cardigan', 'dress', 'bra','underwire','wirefree','bikini','swim','lingerie','thong','slippers','pantyhose','hairpin',
+nonshoes <- c('pants','jeans', 'jacket','cardigan', 'dress','shirt','romper','suit','pedicure', 'bra','underwire','wirefree','bikini','swim','lingerie','thong','slippers','pantyhose','hairpin',
               'swimsuit','swimwear','scarf','glove','leggings','eyewear','Sunglasses',"Costume",
               'dress','blazer','men\'s', 'skirt','coat','top','socks','Doll','sleepwear','makeup',
               'bracelet','necklace','jewelry','diamond','band','ring','watch','Parka','lens')
@@ -85,7 +85,7 @@ df_brand %>%
       subtitle = "")
 
 ```
-```{r sampleset}
+```{r samplepricelevel}
 #sample shoes from higher price range of each price level
 sample = df_clean %>% 
   filter(!is.na(level),!is.na(imageURLs),!grepl('net',imageURLs),!grepl('ebayimg',imageURLs)) %>% 
@@ -105,12 +105,15 @@ get.image <- function(url){
   img = resize(img, size_x = 150, size_y = 150)
   plot(img, axes=FALSE)}
 
+
 par(mfrow=c(3,5), mar=c(.1,.1,.1,.1))
 for (i in 1:15) {
   try({get.image(sample$imageURLs[i])
-  text(10, 10, col="black", cex=1, paste(sample$brand[i]))
-  text(10, 20, col="black", cex=1, paste(sample$prices.amountMin[i]))
-  text(10, 30, col="black", cex=1, paste(sample$level[i]))
+    if (i%%5==1) {
+      text(2, 10, col="black", cex=1.5, paste(sample$level[i]), adj=0)
+    }
+  text(5, 25, col="black", cex=1, paste(sample$brand[i]), adj=0)
+  text(5, 35, col="black", cex=1, paste0('$',sample$prices.amountMin[i]), adj=0)
   })
 }
 
@@ -164,6 +167,84 @@ for (i in 1:10) {
 }
 
 ```
+```{r colors}
+df_color= df_clean%>%
+  filter(!is.na(colors))%>%
+  group_by(colors)%>%
+  dplyr::summarize(n=n()) %>%
+  arrange(desc(n))%>%
+  head(10)
+
+df_color %>%
+  ggplot(aes(reorder(colors, n), n)) + 
+  geom_bar(stat='identity') + coord_flip()
+  theme_void() 
+
+```
+
+
+```{r type}
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+{
+  stopifnot(length(patterns) == length(replacements))
+  ans = rep_len(as.character(fill), length(x))    
+  empty = seq_along(x)
+  
+  for(i in seq_along(patterns)) {
+    greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+    ans[empty[greps]] = replacements[[i]]  
+    empty = empty[!greps]
+  }
+  return(ans)
+}
+
+df_type <- df_clean %>% 
+  mutate(type=patternreplace(name, 
+                             c('flat','mocassin','moccasin','loafer', 'Espadrille','boot',
+                                'heel','Mary Janes', 'gladiator','stiletto','wedge','pump',
+                                'sneaker','running shoe','trainer','sandal','slipper','mule','clog'),
+                             c('flats','flats','flats','flats','flats','boots',
+                               'heels','heels','gladiators','stilettos','wedges','pumps',
+                               'sneakers','sneakers','sneakers','sandal','sandal','sandal','sandal')))
+temp=df_type%>%filter(is.na(type))%>%select(name)
+```
+```{r}
+df_type %>% 
+  filter(colors%in%df_color$colors)%>% 
+group_by(colors, type) %>%
+dplyr::summarize(n = n())%>%
+ggplot(aes(colors, type)) + 
+geom_tile(aes(fill = n), colour = "white") +
+theme_minimal() 
+temp=df_type%>%dplyr::filter(colors=='Gold',type=='boots')
+```
+
+```{r samplecolor}
+#sample shoes from higher price range of each price level
+sample_color = df_type %>% 
+  filter(colors%in%df_color$colors)%>% 
+  filter(!is.na(type), !is.na(colors),
+         !is.na(imageURLs),
+         !grepl('net',imageURLs),!grepl('ebayimg',imageURLs)) %>% 
+  group_by(colors, type) %>%
+  filter(row_number(name) == 1) %>%
+  arrange(desc(prices.amountMin)) %>% 
+  select(colors, type, brand, name, imageURLs, prices.amountMin) %>% slice(1:5) 
+table(sample_color$colors, sample_color$type)
+```
+```{r color}
+sample_color=sample_color %>%
+  filter(!grepl('boot|pump|wedge',type))
+par(mfrow=c(10,5), mar=c(.1,.1,.1,.1))
+for (i in 1:50) {
+  try({get.image(sample_color$imageURLs[i])
+  text(12, 10, col="black", cex=1, paste(sample_color$prices.amountMin[i]), adj=0)
+  #text(10, 20, col="black", cex=1, paste(sample_color$type[i]), adj=0)
+
+  })
+}
+```
+
 
 
 ```{r saleprice}
@@ -177,5 +258,8 @@ df_smry%>%
   geom_density() + 
   theme_minimal() 
   
+```
+```{r}
+sessionInfo()
 ```
 
