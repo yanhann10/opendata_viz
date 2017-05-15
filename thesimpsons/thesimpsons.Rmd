@@ -1,0 +1,145 @@
+---
+title: ""
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(tidyr)
+library(ggplot2) # Data visualization
+library(viridis)
+library(RColorBrewer)
+library(lubridate)
+library(extrafont)
+library(dplyr)
+library(stringr)
+library(ggimage)
+```
+
+```{r input, message=FALSE}
+characters <- read_csv("~/git_repo/opendata_viz/thesimpsons/characters.csv")
+episodes <- read_csv("~/git_repo/opendata_viz/thesimpsons/episodes.csv")
+locations <- read_csv("~/git_repo/opendata_viz/thesimpsons/locations.csv")
+script <- read_csv("~/git_repo/opendata_viz/thesimpsons/script.csv")
+```
+
+```{r cleaning}
+#script wordcount contains records 'true' instead of number of words in some rows
+script <- script %>%
+  mutate(word_count = ifelse(word_count=='true', str_count(spoken_words, "\\S+"), is.numeric(word_count)))
+```
+
+#scenes
+```{r preprocessing}
+#by episode by each turn of scene, how long does it take, how many characters were there, how many times it occurred? does this scene involve a Simpsons?
+#location lookup contains location not in raw text in script
+df_scene <- script %>% 
+  filter(speaking_line=='true') %>%
+  arrange(episode_id, timestamp_in_ms) %>%
+  mutate(occurrence = ifelse(raw_location_text==lag(raw_location_text),0,1)) 
+df_scene$occurrence[1]<-1
+df_scene_smry <- df_scene %>% 
+  filter(raw_character_text != 'Voice', !is.na(raw_location_text)) %>%
+  group_by(episode_id, raw_location_text) %>%
+  summarize(occurrence = sum(occurrence),
+            duration = (max(timestamp_in_ms) - min(timestamp_in_ms))/1000,
+            characters =  paste(raw_character_text, collapse=", "),
+            contain_simpsons = grepl('Simpson',characters)) %>%
+  left_join(episodes, by = c(episode_id = 'id'))
+write.csv(df_scene_smry,'scene_smry.csv')
+# prop.table(table(df_scene_smry$contain_simpsons))
+# 
+#     FALSE      TRUE 
+# 0.2155309 0.7844691 
+#df_scene_smry%>%filter(is.na(normalized_name))%>%head()
+```
+```{r review}
+episodes %>% 
+  ggplot(aes(season, imdb_rating)) + 
+  geom_point() + 
+  geom_smooth()+
+  ggtitle("") +
+  theme_minimal()
+```
+```{r alterego}
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+  {
+stopifnot(length(patterns) == length(replacements))
+ans = rep_len(as.character(fill), length(x))    
+empty = seq_along(x)
+
+for(i in seq_along(patterns)) {
+greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+ans[empty[greps]] = replacements[[i]]  
+empty = empty[!greps]
+}
+return(ans)
+}
+df_character <- df_scene %>%
+  filter(grepl('Bart|Lisa|Maggie|Homer|Marge|Grampa|Abraham|Mona|Herb',raw_character_text)) %>%
+  mutate(ultimate_ego = patternreplace(raw_character_text,
+                                       c('Bart', 'Lisa', 'Maggie', 'Homer', 'Marge', 'Grampa', 'Abraham', 'Mona', 'Herb'),
+                                       c('Bart', 'Lisa', 'Maggie', 'Homer', 'Marge', 'Grampa', 'Grampa', 'Mona', 'Herb')))
+alterego <- df_character %>%
+  mutate(word_count = as.numeric(word_count)) %>%
+  filter(!is.na(word_count), !grepl('Bartender', raw_character_text, ignore.case=T)) %>%
+  group_by(ultimate_ego, raw_character_text) %>%
+  summarize(words = sum(word_count))
+#write.csv(alterego, 'alterego.csv')
+
+```
+
+```{r}
+img <- data.frame(sim = c("Bart" , "Grampa",   "Homer",  "Lisa",   "Maggie", "Marge",  "Mona"),
+                image = c("imagebart.png" , "imagegrampa.png", "imagehomer.png",  "imagelisa.png",  
+                          "imagemaggie.png", "imagemarge.png", "imagemona.png")
+)
+```
+
+```{r alteregochart}
+library(scales)
+alterego_smry <- alterego %>% 
+  group_by(ultimate_ego) %>%
+  summarize(n_alter = n(), words = sum(words)) %>%
+  inner_join(img, by=c('ultimate_ego' = 'sim'))
+alterego_smry%>%
+  ggplot(aes(words, n_alter)) + 
+  geom_image(aes(image=image), size=.12, by='height') + 
+  coord_flip() + 
+  theme_minimal() +
+  theme(
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family='Simpsonfont'),
+  plot.background = element_rect(fill='lightpink1', color='white')) +
+  #labs(title = "Who talked the most among the Simpsons?",
+  labs(title = "WHO TALKED THE MOST AMONG THE SIMPSONS?",
+  subtitle = "HOMER AND BART, WITH THEIR ALTER EGOS",
+  y="Number of alter egos",x="Number of words spoken") 
+ # scale_x_continuous(labels = comma, limits=c(0, 310000))  #avoid scientific scale
+```
+
+```{r characteristicwords}
+library(tidytext)
+df_scene %>%
+  filter(grepl('Bart|Lisa|Maggie|Homer|Marge|Grampa|Abraham|Mona|Herb',raw_character_text)) %>%
+  # unnest_tokens(Word, spoken_words)%>%
+  # anti_join(stop_words)%>%
+  # count(Word, sort = TRUE)
+  unnest_tokens(word, spoken_words, token = "ngrams", n = 2)%>%
+  count(raw_character_text,word,sort=TRUE)%>%
+  bind_tf_idf(word, raw_character_text, n)%>%
+  arrange(desc(tf_idf)) 
+```
+```{r sentiment}
+
+```
+
+
+```{r}
+sessionInfo()
+```
+
