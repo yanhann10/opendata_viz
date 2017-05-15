@@ -134,10 +134,27 @@ df_scene %>%
   bind_tf_idf(word, raw_character_text, n)%>%
   arrange(desc(tf_idf)) 
 ```
-```{r sentiment}
-
+```{r sentimentby_character}
+library(tidytext)
+get_sentiments("afinn")
+get_sentiments("nrc")
 ```
 
+```{r sentimentbyword}
+df_tidy <- df_character %>%
+  select(normalized_text, ultimate_ego) %>%
+  unnest_tokens(word, normalized_text) %>%
+  left_join(get_sentiments("nrc")) %>%
+  filter(!is.na(sentiment)) %>%
+  count(ultimate_ego,sentiment, sort = TRUE)
+write.csv(df_tidy,'sentiment.csv')
+```
+```{r sentences}
+# tibble(text = "i'm having a great day") %>% 
+#   unnest_tokens(sentence, text, token = "sentences")%>%
+#         inner_join(get_sentiments("afinn"))
+
+```
 
 ```{r}
 sessionInfo()
