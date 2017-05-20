@@ -17,6 +17,9 @@ library(extrafont)
 library(dplyr)
 library(stringr)
 library(ggimage)
+library(sentimentr)
+library(tm)
+
 ```
 
 ```{r input, message=FALSE}
@@ -78,11 +81,15 @@ empty = empty[!greps]
 }
 return(ans)
 }
-df_character <- df_scene %>%
-  filter(grepl('Bart|Lisa|Maggie|Homer|Marge|Grampa|Abraham|Mona|Herb',raw_character_text)) %>%
+df_scene <- df_scene %>%
   mutate(ultimate_ego = patternreplace(raw_character_text,
                                        c('Bart', 'Lisa', 'Maggie', 'Homer', 'Marge', 'Grampa', 'Abraham', 'Mona', 'Herb'),
-                                       c('Bart', 'Lisa', 'Maggie', 'Homer', 'Marge', 'Grampa', 'Grampa', 'Mona', 'Herb')))
+                                       c('Bart', 'Lisa', 'Maggie', 'Homer', 'Marge', 'Grampa', 'Grampa', 'Mona', 'Herb'))) %>%
+  mutate(ultimate_ego = ifelse(is.na(ultimate_ego), raw_character_text, ultimate_ego))
+
+df_character <- df_scene %>%
+  filter(grepl('Bart|Lisa|Maggie|Homer|Marge|Grampa|Abraham|Mona|Herb',raw_character_text))
+
 alterego <- df_character %>%
   mutate(word_count = as.numeric(word_count)) %>%
   filter(!is.na(word_count), !grepl('Bartender', raw_character_text, ignore.case=T)) %>%
@@ -149,13 +156,320 @@ df_tidy <- df_character %>%
   count(ultimate_ego,sentiment, sort = TRUE)
 write.csv(df_tidy,'sentiment.csv')
 ```
+```{r}
+df_character %>%
+  select(normalized_text, ultimate_ego) %>%
+  unnest_tokens(word, normalized_text) %>%
+  left_join(get_sentiments("nrc")) %>%
+  filter(!is.na(sentiment)) %>% head(20
+                                     )
+```
+#the simpsons family
+```{r}
+top_location = df_character %>%
+  count(raw_location_text, sort=T) %>%
+  head(10)
+top_location %>% 
+  ggplot(aes(reorder(raw_location_text, n), n)) + 
+geom_bar(stat="identity") + 
+coord_flip() + 
+ggtitle("Top location in the Simpsons") +
+theme_minimal() +
+  theme(
+  plot.title = element_text(face="bold", size=16),
+  axis.title.y=element_blank(),axis.title.x=element_blank(),
+  text = element_text(family='Comic Sans MS'),
+  plot.background = element_rect(fill='gold', color='white'))
+```
+
+# custom stop words, remove people's name from common words
+```{r}
+data(stop_words)
+
+custom_stopwords = tolower(c(unique(df_character$ultimate_ego),
+                          'simpson','homer\'s','i\'m','homie','moe',
+                             'skinner','barney','lenny','moe\'s','moes',
+                             'carl','willie','nelson','krabappel','seymour'))
+
+added_words=data.frame(word=custom_stopwords,lexicon="bespoke")
+
+```
+
+#what do people talk about in top 10 locations
+
+```{r}
+
+df_unnest <- df_character %>% 
+  mutate(normalized_text = gsub('\'',' ',normalized_text)) %>% 
+  select(raw_location_text,ultimate_ego, normalized_text)%>%
+  unnest_tokens(word, normalized_text)
+  
+chatter <- df_unnest%>% 
+  filter(raw_location_text %in% top_location$raw_location_text) %>% 
+  select(raw_location_text,word)%>%
+  filter(nchar(word)>3) %>%
+  anti_join(added_words,by='word') %>%
+  filter(!grepl("[0-9]",word)) %>%
+  group_by(raw_location_text, word) %>%
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>%
+  bind_tf_idf(word, raw_location_text, n) %>%
+  arrange(desc(tf_idf)) %>%
+  group_by(raw_location_text) %>% slice(1:15) 
+```
+# top words by location
+
+```{r}
+for (i in top_location$raw_location_text[1:6]) {
+  
+p=chatter%>%
+  filter(raw_location_text == i)%>%
+  ggplot(aes(reorder(word, n), n)) + 
+  geom_bar(stat='identity', aes(fill=cut(tf_idf,50))) + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal() +
+  facet_wrap(~raw_location_text)+
+  #scale_fill_discrete(h = c(180, 360), c = 150, l = 80)
+  scale_fill_viridis(discrete=T) +
+  theme(
+  plot.title = element_text(face="bold", size=16),
+  axis.title.y=element_blank(),
+  text = element_text(family='Comic Sans MS'),
+  plot.background = element_rect( color='white')) + 
+  labs(y='number of occurence') + 
+  theme(legend.position = 'None')
+
+print(p)
+}
+#df_character%>%filter(grepl('li ',normalized_text))%>%select(normalized_text)
+```
+# what do each person talk about
+
+```{r}
+chatter_person <- df_unnest%>% 
+  select(ultimate_ego, word)%>%
+  filter(nchar(word)>3) %>%
+  anti_join(added_words,by='word') %>%
+  filter(!grepl("[0-9]",word)) %>%
+  group_by(ultimate_ego, word) %>%
+  summarize(n=n()) %>% 
+  arrange(desc(n)) %>%
+  bind_tf_idf(word, ultimate_ego, n) %>%
+  arrange(desc(tf_idf)) %>%
+  group_by(ultimate_ego) %>% slice(1:15) 
+```
+
+
+#who, where?
+```{r}
+df_who_where <- df_scene %>%
+  group_by(raw_character_text, raw_location_text) %>%
+  summarize(n = n()) %>%
+  filter(!is.na(raw_location_text), n>1)
+#43% of location only appear once
+#write.csv(df_who_where,'df_who_where.csv')
+```
+
+#sentiments
+```{r byepisodes}
+library(viridis)
+df_episode_senti <- df_character %>%
+        group_by(episode_id) %>%
+        select(normalized_text, episode_id) %>%
+        unnest_tokens(word, normalized_text) %>%
+        inner_join(get_sentiments("bing")) %>%
+        count(episode_id , sentiment) %>%
+        spread(sentiment, n, fill = 0) %>%
+        mutate(sentiment = positive - negative)
+df_episode_senti%>%
+        ggplot(aes(episode_id, sentiment, fill = sentiment)) +
+          geom_bar(alpha = 0.5, stat = "identity", show.legend = FALSE) +
+          theme_minimal() +
+          theme(axis.title.y = element_blank(), axis.title.x = element_blank(),
+          plot.title = element_text(face="bold", size=16),
+          axis.text = element_text(face="bold"),
+          text = element_text(family = "Comic Sans MS"),
+          plot.background = element_rect(fill = 'gold',color='white')) +
+          labs(title = "Sentiment across all episodes of the simpsons",
+          subtitle = "") + scale_fill_viridis()
+```
+
+
 ```{r sentences}
 # tibble(text = "i'm having a great day") %>% 
 #   unnest_tokens(sentence, text, token = "sentences")%>%
 #         inner_join(get_sentiments("afinn"))
 
 ```
+```{r}
+# temp=df_character %>% select(episode_id, spoken_words) %>% head(1000)
+# temp%>%sentiment_by(spoken_words, by="episode_id")
+# episode_sentiment <- with(df_character, 
+#                           sentiment_by(spoken_words, list(episode_id, ultimate_ego)))
+# episode_sentiment
 
+
+```
+```{r}
+# episode_sentiment%>% 
+#   filter(!ultimate_ego%in%c('Herb','Maggie','Mona')) %>%
+#   ggplot(aes(episode_id, ave_sentiment)) + 
+# geom_line(aes(col=ultimate_ego)) + 
+#   geom_hline(yintercept=0, linetype="dotted")+
+#   facet_grid(ultimate_ego~.,  switch="y") +
+# ggtitle("sentiment by character") +
+# theme_minimal() +
+#           theme(axis.title.y = element_blank(), axis.title.x = element_blank(),
+#                 legend.position = 'None',
+#           plot.title = element_text(face="bold", size=16),
+#           axis.text = element_text(face="bold"),
+#           text = element_text(family = "Comic Sans MS"),
+#           strip.text.y = element_text(angle = 180),
+#           plot.background = element_rect(fill = 'gold',color='white')) +
+#           labs(title = "Sentiment across all episodes of the simpsons",
+#           subtitle = "")
+```
+
+
+
+
+#turn each episode into a corpus
+```{r}
+df_episode <- df_character %>% 
+     group_by(episode_id) %>% 
+     summarize(script = paste0(normalized_text, collapse = " ")) 
+```
+
+
+```{r}
+# script <- df_episode %>% 
+#   mutate(script = gsub('\'',' ',script)) %>% 
+#   select(script)
+
+stop_wordsx <- rbind(stop_words,added_words)
+
+	clean_corpus <- function(corpus){
+
+	#corpus <- tm_map(corpus, content_transformer(replace_abbreviation))
+	#corpus <- tm_map(corpus, removePunctuation)
+	corpus <- tm_map(corpus, removeNumbers)
+	corpus <- tm_map(corpus, content_transformer(tolower))
+	corpus <- tm_map(corpus, stripWhitespace)
+	corpus <- tm_map(corpus, removeWords, c( stopwords("english"),tolower(unique(df_character$ultimate_ego))))
+	return(corpus)
+	}
+	corpus <- Corpus(VectorSource(df_episode$script))
+	
+	tm <- clean_corpus(corpus)
+	#dictCorpus <- tm
+  #tm_stemmed <- tm_map(tm, stemDocument)
+  #tm<-tm_map(tm, stemCompletion,dictionary=dictCorpus, type="prevalent")
+  
+	dtm <- DocumentTermMatrix(tm,
+	control = list(wordLengths = c(3, Inf),
+	               #weighting = function(x) weightTfIdf(x, normalize = FALSE),
+                          stopwords = TRUE))
+	findFreqTerms(dtm,500)
+```
+
+```{r}
+library(RTextTools)
+library(topicmodels)
+lda <- LDA(dtm, 10)
+terms(lda)
+```
+#only returned common words
+```{r}
+simpsons_topics <- tidy(lda, matrix = "beta")
+simpsons_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+```
+
+#where are each characters
+```{r}
+top10location <- df_scene_smry %>% group_by(raw_location_text) %>%
+  summarize(duration = sum(duration)) %>%
+  top_n(10)
+
+df_scene_pct = df_scene_smry %>% 
+  mutate(scene = ifelse(raw_location_text %in% top10location$raw_location_text,  raw_location_text, 'Elsewhere')) %>%
+  group_by(episode_id, scene) %>%
+  summarize(duration = sum(duration)) %>%
+  ungroup() %>%
+  group_by(episode_id) %>%
+  mutate(total_duration=sum(duration), pct = duration/total_duration)
+write.csv(df_scene_pct, 'df_scene_pct.csv')
+```
+```{r}
+df_scene_pct %>% #filter(episode_id<100) %>% 
+  ggplot(aes(episode_id, pct)) + 
+geom_bar(stat='identity',position='stack',aes(fill=scene)) + 
+ggtitle("") +
+theme_minimal() 
+```
+#whose names the Simpsons family mention the most, it could be talking to them or talking about them
+```{r}
+df_names <- df_scene %>% 
+  select(ultimate_ego) %>%
+  unnest_tokens(name, ultimate_ego) %>%
+  distinct(name)
+```
+
+```{r}
+df_character %>%select(ultimate_ego, normalized_text) %>%
+  unnest_tokens(word, normalized_text) %>%
+  filter(word %in% df_names$name) %>%
+  group_by(ultimate_ego, word) %>%
+  summarize(n=n()) %>%
+  arrange(desc(n))
+```
+
+
+
+
+```{r}
+dtm.control <- list(
+  tolower = TRUE,
+  removePunctuation =TRUE,
+  stopwords = stopwords("english"),
+  stemming = TRUE,
+  wordLengths = c(3, "inf",
+                  weighting = weightTf)
+)
+
+dtm = DocumentTermMatrix(Corpus,
+                         control = dtm.control)
+raw.sum=apply(dtm,1,FUN=sum)
+dtm=dtm[raw.sum!=0,]
+
+```
+```{r}
+library(topicmodels)
+burnin <- 500
+iter <- 1000
+keep <- 30
+k<-40
+mods <- LDA(dtm, k, method='Gibbs',
+            control = list(burnin = burnin,
+                           iter = iter,
+                           keep = keep))
+```
+
+```{r}
+library(LDAvis)
+zson <- createJSON(K=K,
+                   phi = t(phi),
+                   theta = theta,
+                   doc.length = doc.length,
+                   term.frequency = term.frequency,
+                   topic.proportion = topic.proportion,
+                   vocab = vocab)
+serVis(zson)
+```
 ```{r}
 sessionInfo()
 ```
