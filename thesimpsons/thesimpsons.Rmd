@@ -170,16 +170,22 @@ top_location = df_character %>%
   count(raw_location_text, sort=T) %>%
   head(10)
 top_location %>% 
-  ggplot(aes(reorder(raw_location_text, n), n)) + 
-geom_bar(stat="identity") + 
-coord_flip() + 
-ggtitle("Top location in the Simpsons") +
-theme_minimal() +
+  mutate(image='donut.png') %>%
+  ggplot(aes(reorder(raw_location_text, n), log10(n))) + 
+  #geom_bar(stat="identity") + 
+  geom_image(aes(image=image), size=.08, by='height')+
+  coord_flip() + 
+  ggtitle("Top locations in the Simpsons") +
+  theme_minimal() +
   theme(
   plot.title = element_text(face="bold", size=16),
-  axis.title.y=element_blank(),axis.title.x=element_blank(),
-  text = element_text(family='Comic Sans MS'),
-  plot.background = element_rect(fill='gold', color='white'))
+  axis.title.y=element_blank(),
+  #axis.title.x=element_blank(),
+  text = element_text(family='Comic Sans MS',face="bold"),
+  plot.background = element_rect(fill='gold', color='white'),
+  panel.grid.major.y = element_blank(),
+  panel.grid.major.x = element_blank() ) + 
+  labs(y='number of occurrences (log10)')
 ```
 
 # custom stop words, remove people's name from common words
@@ -244,6 +250,8 @@ print(p)
 }
 #df_character%>%filter(grepl('li ',normalized_text))%>%select(normalized_text)
 ```
+
+
 # what do each person talk about
 
 ```{r}
@@ -332,7 +340,7 @@ df_episode_senti%>%
 ```
 
 
-
+#LDA
 
 #turn each episode into a corpus
 ```{r}
@@ -343,9 +351,6 @@ df_episode <- df_character %>%
 
 
 ```{r}
-# script <- df_episode %>% 
-#   mutate(script = gsub('\'',' ',script)) %>% 
-#   select(script)
 
 stop_wordsx <- rbind(stop_words,added_words)
 
