@@ -196,29 +196,59 @@ waittime <- df %>% mutate(Year = as.numeric(Year))%>%
   filter(!duplicated(Winner==1)) %>% 
   arrange(desc(gap_sum)) %>%
   ungroup() %>%
-  mutate(first_nominated=Year-gap_sum, Name = reorder(Name, gap_sum)) %>%
-  head(10) 
+  mutate(first_nominated=Year-gap_sum, Name = reorder(Name, gap_sum))  
+```
+#5 persons who waited the longest
+```{r}
+longest5 <- waittime %>%
+  head(5) %>%
+  mutate(born=c(1934, 1919, 1949, 1924, 1925)) %>%
+  mutate(age_nominated = first_nominated - born)
 ```
 
 ```{r}
-waittime %>% mutate() %>% 
+longest5 %>% 
     ggplot(aes(Name)) +
-    geom_linerange(aes(ymin = first_nominated, ymax = Year)) + 
-    geom_point(aes(y =first_nominated), color="darkorchid3", size=2) +
-    geom_point(aes(y = Year), color="yellowgreen",size=2.5, shape=8) + 
-  geom_text(aes(y=Year+3, label = gap_sum)) +
-  coord_flip()+
+    geom_segment(aes(y = first_nominated, yend = Year,
+                       x = age_nominated, xend= age_nominated + gap_sum, col=Name), size=1.5) + 
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face="bold", size=16),
+      axis.text = element_text(face="bold"),
+      text = element_text(family = "Helvetica"),
+      plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+    labs(title = "Oscars: first nomination till first award",
+       subtitle = "Five people who waited the longest", 
+       x = 'Age', y='Year of nomination and award')
+```
+
+
+#wait time radial
+```{r}
+library(grid)
+#png('oscarwait.png')
+n = waittime %>% filter(gap_sum>=1) %>% nrow()
+waittime %>%
+    filter(gap_sum>=1) %>%
+    ggplot(aes(reorder(Name, gap_sum))) +
+    geom_linerange(aes(ymin = first_nominated, ymax = Year), 
+                   col='gold',size=1,alpha=0.5) + 
+    geom_point(aes(y =first_nominated), col='gold',size=0.5) +
+    geom_point(aes(y = Year), col='gold',size=0.8) + 
     theme(legend.position = "None",
           axis.title.x=element_blank(),
-      panel.grid.major.x = element_blank()) +
+          text=element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.background = element_rect(fill = 'black',color='white'),
+          axis.title.y = element_blank(),
+          panel.grid.major = element_line(colour = "grey30")
+          #axis.text = element_text(color='white',family='Helvetica')
+          ) +
   scale_y_continuous(breaks = seq(1950,2015,10)) +
-  ggtitle("Years From First Nominated to Finally winning") +
-   theme_tufte()
+  coord_polar()
+  ggtitle("Years From First Nominated to Finally winning") 
+  #theme(axis.text.x = element_text(angle = 
+   #         360/(2*pi)*rev( pi/2 + seq( pi/n, 2*pi-pi/n, len=n)))) 
+  #dev.off()
 ```
-
-#network
-```{r}
-
-```
-
 
