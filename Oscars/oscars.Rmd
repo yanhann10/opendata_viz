@@ -110,37 +110,13 @@ df <- oscars %>%
   mutate(gap_sum = cumsum(gap))
 ```
 
-Then I divided them into Actor groups and Actress groups. Each were eligible to win Lead actor/actress, supporting actor/actress, honorary award, special award and humanitarian award.
+Dividing them into Actor groups and Actress groups. Each were eligible to win Lead actor/actress, supporting actor/actress, honorary award, special award and humanitarian award.
 
 ```{r}
-Actor <- winner_at_last %>% filter(grepl("Actor",Award)) %>% distinct(Name)
-Actress <- winner_at_last %>% filter(grepl("Actress",Award)) %>% distinct(Name)
+Actor <- winner_at_last %>% filter(grepl("Actor",Award, ignore.case=T)) %>% distinct(Name)
+Actress <- winner_at_last %>% filter(grepl("Actress",Award, ignore.case=T)) %>% distinct(Name)
 ```
 
-```{r, fig.width=5, fig.height=5}
-require(gridExtra)
-p1= df %>% 
-  filter(Name %in% Actor$Name) %>%
-  ggplot(aes(Name, gap_sum))+
-  geom_point(aes(col=factor(Winner), shape=Award))+
-  scale_fill_manual(values = c("red","grey"))+
-  coord_flip()+
-  labs(x = "Actors")+
-  theme_minimal() +
-  guides(color=FALSE)+
-  theme(legend.position="bottom")
-
-p2=df %>% filter(Name %in% Actress$Name) %>%
-  ggplot(aes(Name, gap_sum)) +
-  geom_point(aes(col=factor(Winner), shape=factor(Award)))+
-  scale_fill_manual(values = c("red","grey"))+
-  coord_flip()+
-  labs(x = "Actresses")+
-  theme_minimal()+
-  theme(legend.position="none") 
-
-grid.arrange(p1, p2, ncol=2)
-```
 ```{r}
 df %>% 
   filter(Name %in% Actor$Name) %>%
@@ -173,12 +149,6 @@ df %>% filter(Winner == 1)%>%
   count(Name, sort=T) %>% head() %>% formattable(align="l")
 ```
 
-
-Who have won the most times? Katharine Hepburn with 4 statuettes
-
-```{r}
-df %>% filter(Winner==1) %>% count(Name, sort=T) %>% head() %>% formattable(align="l")
-```
 
 Who are the ones recognized by the ceremony throughout decades of their careers?
 
