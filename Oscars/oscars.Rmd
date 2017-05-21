@@ -19,7 +19,67 @@ library(gridExtra)
 library(plotly)
 library(viridis)
 library(ggthemes)
-oscars <- read_csv("~/git_repo/Oscars/oscars.csv")
+library(png)
+library(networkD3)
+#data from https://www.kaggle.com/theacademy/academy-awards
+oscars <- read_csv("oscars.csv")
+
+```
+
+```{r}
+# top10 <- oscars %>% 
+#   filter(Winner == 1, !is.na(Film)) %>% 
+#   count(Film, sort=T) %>% head(10)
+# oscarstop10 <- oscars %>%
+#   filter(Film%in%top10$Film)
+# write.csv(oscarstop10 , 'oscarstop10 .csv')
+```
+Top studio by nomination
+```{r}
+topstudio = oscars%>%
+  filter(grepl('Product|Short Subject', Award)) %>% 
+  filter(!grepl(', Producer',Film))%>% 
+  count(Film, sort=T) %>% head(7)
+oscarstop10studio <- oscars %>%
+  filter(Film%in% c(topstudio$Film,'Walt Disney, Producer'))
+write.csv(oscarstop10studio, 'oscarstop10studio.csv')
+```
+Top studio by winning
+```{r}
+oscarstop10studiowin <- oscars %>% 
+  filter(Film%in% c(topstudio$Film,'Walt Disney','20th Century-Fox')) %>% 
+  filter(Winner==1) 
+write.csv(oscarstop10studiowin, 'oscarstop10studiowin.csv')
+```
+
+#Top in acting/directing
+```{r}
+
+winner <- oscars %>% 
+  filter(Winner == 1, !is.na(Film)) 
+
+n_film = winner %>%
+  count(Film, sort=T) %>% rename(n_film=n)
+n_entity = winner %>%
+  count(Name, sort=T) %>% rename(n_entity=n)
+
+winner = winner %>% 
+  filter(grepl('actor|actress|director', Award, ignore.case=TRUE))   %>% 
+  left_join(n_film) %>% 
+  left_join(n_entity) %>% 
+  filter(n_entity>1)
+
+write.csv(winner, 'winner.csv')
+```
+
+#all category most awards
+```{r}
+overall = oscars %>% 
+  filter(Winner == 1, !is.na(Film)) %>% 
+  left_join(n_film) %>% 
+  left_join(n_entity) %>% 
+  filter(n_entity>3|n_film>3)
+write.csv(overall, 'overall.csv')
 ```
 
 First I filter for those actors and actress with winning history both 1 and NA
@@ -81,6 +141,24 @@ p2=df %>% filter(Name %in% Actress$Name) %>%
 
 grid.arrange(p1, p2, ncol=2)
 ```
+```{r}
+df %>% 
+  filter(Name %in% Actor$Name) %>%
+  ggplot(aes(Name, gap_sum))+
+  geom_point(aes(col=factor(Winner), shape=Award))+
+  scale_fill_manual(values = c("red","grey"))+
+  coord_flip()+
+  labs(x = "Actors")+
+  theme_minimal() +
+  guides(color=FALSE)+
+  theme(legend.position="bottom") + coord_polar() + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_blank(),
+  plot.background = element_rect(fill = 'black',color='white')) +
+  labs(title = "",
+  subtitle = "")
+```
 
 
 Then I look at who have been nominated the most times: none other than Meryl Streep!
@@ -138,9 +216,9 @@ waittime %>% mutate() %>%
    theme_tufte()
 ```
 
-
-What kind of movie names tend to win?
+#network
 ```{r}
-library(png)
-#img <- readPNG("~/git_repo/Oscars/oscars.png")
+
 ```
+
+
