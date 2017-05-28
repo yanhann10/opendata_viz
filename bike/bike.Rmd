@@ -1,0 +1,78 @@
+---
+title: ""
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(tidyr)
+library(ggplot2) # Data visualization
+library(viridis)
+library(RColorBrewer)
+library(lubridate)
+library(tweenr)
+library(ggrepel)
+library(gganimate)
+library(dplyr)
+```
+
+```{r input, message=FALSE}
+#data from http://www.bayareabikeshare.com/open-data
+df_trip <- read_csv("~/git_repo/opendata_viz/bike/201608_trip_data.csv")
+df_station <- read_csv("~/git_repo/opendata_viz/bike/201608_station_data.csv")
+```
+
+```{r}
+df <- df_trip %>% 
+  left_join(df_station, by=c("Start Terminal" = "station_id")) %>%
+  rename(start_lat = lat, start_lon = long, start_zone = landmark)%>% 
+  left_join(df_station, by=c("End Terminal" = "station_id")) %>%
+  rename(end_lat = lat, end_lon = long, end_zone = landmark) %>%
+  mutate(start_dt = mdy_hms(paste0(`Start Date`,":00"))) %>%
+  mutate(start_hr = hour(start_dt))
+```
+
+```{r}
+#label only the top route
+routes <- df %>% 
+  filter(start_zone == 'San Francisco', end_zone == 'San Francisco') %>%
+  group_by(start_lat,start_lon, end_lat, end_lon, start_hr, name.x) %>%
+  summarize(n=n()) %>%
+  filter(n > 200) 
+
+#stations <- 
+ggplot(routes) + 
+  geom_point(aes(x = start_lon, y = start_lat, size=n), 
+             colour="red", alpha =0.5)+
+  geom_curve(aes(x=start_lon, xend=end_lon, y=start_lat, yend=end_lat), 
+             alpha=0.3, curvature = 0.2) + 
+  geom_text(aes(x = start_lon, y = start_lat,label=ifelse(n>500, name.x, '')), size=2)+ 
+     scale_colour_gradientn(colors=c("#dddddd", "#20beff"), limits=c(0, max(routes$n)), name="Number of Trips") +
+  facet_wrap(~start_hr) + 
+theme_void()
+  
+```
+```{r}
+#find top 5 routes by hour
+#label only the top route
+routes <- df %>% 
+  filter(start_zone == 'San Francisco', end_zone == 'San Francisco') %>%
+  group_by(start_lat,start_lon, end_lat, end_lon, start_hr, name.x) %>%
+  summarize(n=n()) %>%
+  filter(n > 200) 
+
+#stations <- 
+ggplot(routes) + 
+  geom_point(aes(x = start_lon, y = start_lat, size=n), 
+             colour="red", alpha =0.5)+
+  geom_curve(aes(x=start_lon, xend=end_lon, y=start_lat, yend=end_lat), 
+             alpha=0.3, curvature = 0.2) + 
+  geom_text(aes(x = start_lon, y = start_lat,label=ifelse(n>500, name.x, '')), size=2)+ 
+     scale_colour_gradientn(colors=c("#dddddd", "#20beff"), limits=c(0, max(routes$n)), name="Number of Trips") +
+  facet_wrap(~start_hr) + 
+theme_void()
+  
+```
