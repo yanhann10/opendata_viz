@@ -30,49 +30,73 @@ df <- df_trip %>%
   left_join(df_station, by=c("Start Terminal" = "station_id")) %>%
   rename(start_lat = lat, start_lon = long, start_zone = landmark)%>% 
   left_join(df_station, by=c("End Terminal" = "station_id")) %>%
-  rename(end_lat = lat, end_lon = long, end_zone = landmark) %>%
-  mutate(start_dt = mdy_hms(paste0(`Start Date`,":00"))) %>%
-  mutate(start_hr = hour(start_dt))
+  rename(end_lat = lat, end_lon = long, end_zone = landmark,
+         start_station = name.x, end_station = name.y) %>%
+  mutate(start_dt = mdy_hms(paste0(`Start Date`,":00")),
+         end_dt = mdy_hms(paste0(`End Date`,":00"))) %>%
+  mutate(start_hr = hour(start_dt), start_wday=wday(start_dt),
+         end_hr = hour(end_dt), end_wday=wday(end_dt),
+         start_weekday = ifelse(start_wday%in%c(1,7),'weekend','weeday')) %>%
+  mutate(duration = as.numeric(end_dt - start_dt)) %>% 
+  filter(start_zone == 'San Francisco', end_zone == 'San Francisco')
+```
+
+```{r}
+df %>% group_by(start_hr,start_weekday) %>%
+summarize(n = n())%>%
+ggplot(aes(start_hr, n)) + 
+geom_bar(stat='identity', aes(fill=n)) +
+scale_fill_viridis() + 
+  facet_grid(start_weekday~., switch='y')+
+theme_minimal()  +
+theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+      legend.position="None",
+plot.title = element_text(face="bold", size=16),
+text = element_text(family = "Helvetica"),
+plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+labs(title = "Number of bike trips",
+subtitle = "")
+
 ```
 
 ```{r}
 #label only the top route
-routes <- df %>% 
-  filter(start_zone == 'San Francisco', end_zone == 'San Francisco') %>%
-  group_by(start_lat,start_lon, end_lat, end_lon, start_hr, name.x) %>%
+routes <- df  %>%
+  group_by(start_lat,start_lon, end_lat, end_lon, start_hr, start_station, end_station) %>%
   summarize(n=n()) %>%
-  filter(n > 200) 
-
-#stations <- 
-ggplot(routes) + 
-  geom_point(aes(x = start_lon, y = start_lat, size=n), 
-             colour="red", alpha =0.5)+
-  geom_curve(aes(x=start_lon, xend=end_lon, y=start_lat, yend=end_lat), 
-             alpha=0.3, curvature = 0.2) + 
-  geom_text(aes(x = start_lon, y = start_lat,label=ifelse(n>500, name.x, '')), size=2)+ 
-     scale_colour_gradientn(colors=c("#dddddd", "#20beff"), limits=c(0, max(routes$n)), name="Number of Trips") +
-  facet_wrap(~start_hr) + 
-theme_void()
-  
+  ungroup() %>% 
+  group_by(start_hr) %>%
+  mutate(toproute = ifelse(n == max(n), "toproute", "") )
 ```
+
 ```{r}
-#find top 5 routes by hour
-#label only the top route
-routes <- df %>% 
-  filter(start_zone == 'San Francisco', end_zone == 'San Francisco') %>%
-  group_by(start_lat,start_lon, end_lat, end_lon, start_hr, name.x) %>%
-  summarize(n=n()) %>%
-  filter(n > 200) 
-
-#stations <- 
-ggplot(routes) + 
+routes %>%
+  filter(n > 200) %>%
+  filter(start_hr %in% c(7,8,9,16,17,18))  %>%
+  ggplot() + 
   geom_point(aes(x = start_lon, y = start_lat, size=n), 
-             colour="red", alpha =0.5)+
+             colour="red", alpha =0.3)+
+  geom_point(aes(x = end_lon, y = end_lat, size=n), 
+             colour="orange", alpha =0.3) + 
   geom_curve(aes(x=start_lon, xend=end_lon, y=start_lat, yend=end_lat), 
              alpha=0.3, curvature = 0.2) + 
-  geom_text(aes(x = start_lon, y = start_lat,label=ifelse(n>500, name.x, '')), size=2)+ 
-     scale_colour_gradientn(colors=c("#dddddd", "#20beff"), limits=c(0, max(routes$n)), name="Number of Trips") +
+  geom_text_repel(aes(x=start_lon, y=start_lat, 
+                      label=ifelse(toproute == 'toproute', start_station, '')), size=2) +
+  geom_text_repel(aes(x=end_lon, y=end_lat, 
+                      label=ifelse(toproute == 'toproute', end_station, '')), size=2) +
   facet_wrap(~start_hr) + 
-theme_void()
+  ggtitle('Top bike routes in SF by hour of the day') +
+  theme_void() + theme(legend.position="None") + 
+  theme(
+  plot.title = element_text(face="bold", size=16, hjust = 0.5),
+  text = element_text(family = "Helvetica"))
   
 ```
+
+
+
+```{r}
+
+```
+
+
