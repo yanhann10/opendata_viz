@@ -1,0 +1,97 @@
+---
+title: ""
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(readxl)
+library(tidyr)
+library(ggplot2) # Data visualization
+library(viridis)
+library(RColorBrewer)
+library(lubridate)
+library(tweenr)
+library(gganimate)
+library(dplyr)
+library(formattable)
+```
+
+```{r input, message=FALSE}
+#data https://docs.google.com/spreadsheets/d/1gsonIDDu0uDlftetpH0QXMTOgojDuuXXsjZDeRIY7XQ/edit#gid=0, use cooked food stall only
+hawker <- read_excel("~/git_repo/opendata_viz/hawker/hawker.xlsx", sheet = "Rental") %>% 
+          rename(year = `Year of Tender`, hawker_center = `Hawker Centre`) %>% 
+          filter(`Stall Type`=='Cooked Food Stalls')
+```
+
+```{r preprocessing}
+hawker %>% mutate(total_rent = Count*Average) %>%
+  group_by(year) %>% 
+  summarize(avg = round(sum(total_rent)/sum(Count)), max=max(Max), min=min(Min))  %>%
+  formattable(align='l')
+```
+
+```{r}
+library(maptools)
+geo <- readShapeSpatial("HAWKERCENTRE.shp")
+plot(geo)
+View(geo@data)
+```
+```{r yearly range}
+#take hawker with at least 2 years of data
+hawker4 <- hawker %>% count(hawker_center, sort=T) %>% filter(n==4)
+```
+
+```{r}
+hawker %>% 
+  filter(hawker_center %in% hawker2) %>%
+  complete(year)
+```
+```{r}
+library(data.table)
+library(tweenr)
+hawker <- hawker %>%
+  filter(hawker_center %in% hawker4$hawker_center) 
+#df = split(hawker, by=hawker$year)
+df15= hawker %>% filter(year==2015) %>% select(hawker_center, Average) %>% as.data.frame()
+df14= hawker %>% filter(year==2014) %>% select(hawker_center, Average) %>% as.data.frame()
+dtf <- list(df14, df15)
+tween_hawker <- tween_states(dtf, tweenlength= 2, statelength=3, ease=rep('cubic-in-out',51),nframes=100)
+```
+```{r}
+hawker %>% 
+  filter(hawker_center %in% hawker2$hawker_center) %>%
+  #filter(year==2015)%>% 
+  ggplot(aes(year, Average)) + 
+  geom_area(alpha=0.4) +
+  #geom_ribbon(aes(ymin = Min, ymax = Max), fill = "grey70") +
+ # geom_line(aes(y = level)) + 
+  #geom_pointrange(aes(ymin = Min, ymax = Max)) + 
+  #coord_flip() +
+  ggtitle("") +
+  theme_minimal() + 
+  facet_wrap(~hawker_center, nrow=5) +
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+        panel.grid.minor = element_blank(), panel.grid.major.y = element_line(color='white'),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica")) + 
+  labs(title = "Hawker stall bidding price 2012-2015",
+  subtitle = "")
+
+```
+
+```{r}
+hawker %>% 
+  filter(hawker_center %in% hawker2$hawker_center) %>%
+  #filter(year==2015)%>% 
+  ggplot(aes(reorder(hawker_center, Average), Average, frame=year)) + 
+  #geom_pointrange(aes(ymin = Min, ymax = Max)) + 
+  coord_flip() +
+  ggtitle("") +
+  theme_minimal() + facet_grid(.~year)
+
+```
