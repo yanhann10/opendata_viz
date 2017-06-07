@@ -1,0 +1,122 @@
+---
+title: ""
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(readxl)
+library(tidyr)
+library(ggplot2) # Data visualization
+library(viridis)
+library(RColorBrewer)
+library(lubridate)
+library(tweenr)
+library(gganimate)
+library(dplyr)
+library(plotly)
+```
+
+```{r input, message=FALSE}
+#data https://www.kaggle.com/momanyc/museum-collection/kernels
+df = read_csv("moma.csv") %>%
+  rename(width=`Width (cm)`, height=`Height (cm)`, 
+         depth=`Depth (cm)`, id=`Artwork ID`,
+         acqui_dt = `Acquisition Date`) %>%
+  mutate(acqui_dt = ymd(acqui_dt), acqui_yr = year(acqui_dt))
+```
+```{r}
+sort(table(df$Classification))
+```
+
+```{r clean}
+library(stringr)
+#extract only digits
+regexp <- "[[:digit:]]+"
+num_only = function(data) {
+  str_extract(data, regexp)}
+
+# df_clean = df %>% select(Dimensions,Department, height, width, depth) %>%
+#   filter(is.na(width), !is.na(Dimensions)) %>%
+#   mutate(real_dimension = gsub(".*\\((.*)\\).*", "\\1", Dimensions),
+#          real_dimension = str_replace(real_dimension,"cm","")) %>%
+#   separate(real_dimension, c('real_height','real_width','real_depth'), sep=' x ',
+#            extra = "drop") %>%
+#   mutate(real_height=str_extract(real_height, regexp),
+#          real_width=str_extract(real_width, regexp),
+#          real_depth=str_extract(real_depth, regexp))
+# col=c('real_height','real_width','real_depth')
+# df_clean[cols] <- lapply(df[cols], num_only)
+
+df = df %>% 
+  mutate(real_dimension = gsub(".*\\((.*)\\).*", "\\1", Dimensions),
+         real_dimension = str_replace(real_dimension,"cm","")) %>%
+  separate(real_dimension, c('real_height','real_width','real_depth'), sep=' x ',
+           extra = "drop") %>%
+  mutate(real_height=as.numeric(str_extract(real_height, regexp)),
+         real_width=as.numeric(str_extract(real_width, regexp)),
+         real_depth=as.numeric(str_extract(real_depth, regexp))) %>%
+  mutate(height=ifelse(is.na(height), real_height,height),
+         width=ifelse(is.na(width), real_width,width),
+         depth=ifelse(is.na(depth), real_depth, depth))
+  
+```
+
+
+
+```{r rect}
+df %>% 
+  filter(width<500, height<500, !grepl("Archive",Department)) %>%
+  ggplot() + 
+  geom_rect(mapping=aes(xmin=0, xmax=width, ymin=0, ymax=height, 
+            fill = Department),alpha=0.01) +
+  facet_wrap(~Department, nrow=2) +
+  #theme_void() + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.background = element_rect(fill='ghostwhite') ,
+        strip.background = element_rect(fill='ghostwhite') ,
+        legend.position = 'None',
+        plot.title = element_text(face="bold", size=16),
+        text = element_text(family = "Helvetica"),
+        plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Size of Artwork in MoMA",
+  subtitle = "In 10mx10m grid")
+
+```
+
+```{r}
+p <- df %>% 
+  filter(width<1000, height<1000, !grepl("Archive",Department)) %>%
+  ggplot(aes(frame=acqui_yr)) + 
+  geom_rect(mapping=aes(xmin=0, xmax=width, ymin=0, ymax=height, 
+            fill = Department),alpha=0.01) +
+  facet_wrap(~Department, nrow=2) +
+  theme_void() + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+        legend.position = 'None',
+        plot.title = element_text(face="bold", size=16),
+        text = element_text(family = "Helvetica"),
+        plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Size of Artwork in MOMA",
+  subtitle = "In 10mx10m grid")
+gganimate(p, 'moma by year.gif')
+```
+
+
+```{r rect}
+p <- df %>% 
+  filter(width<1000, height<1000) %>%
+  ggplot() + 
+  geom_rect(mapping=aes(xmin=0, xmax=width, ymin=0, ymax=height, 
+            fill = Department, colour = Department, frame=id),
+            color="black", alpha=0.5) 
+
+gganimate(p, "moma.gif")
+
+```
+
