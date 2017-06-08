@@ -62,7 +62,8 @@ df = df %>%
   mutate(height=ifelse(is.na(height), real_height,height),
          width=ifelse(is.na(width), real_width,width),
          depth=ifelse(is.na(depth), real_depth, depth))
-  
+
+write.csv(df, 'moma_cleaned.csv')
 ```
 
 
@@ -85,26 +86,59 @@ df %>%
         text = element_text(family = "Helvetica"),
         plot.background = element_rect(fill = 'ghostwhite',color='white')) +
   labs(title = "Size of Artwork in MoMA",
-  subtitle = "In 10mx10m grid")
+  subtitle = "Height vs width in cm")
 
 ```
 
 ```{r}
-p <- df %>% 
-  filter(width<1000, height<1000, !grepl("Archive",Department)) %>%
-  ggplot(aes(frame=acqui_yr)) + 
-  geom_rect(mapping=aes(xmin=0, xmax=width, ymin=0, ymax=height, 
-            fill = Department),alpha=0.01) +
-  facet_wrap(~Department, nrow=2) +
-  theme_void() + 
-  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
-        legend.position = 'None',
-        plot.title = element_text(face="bold", size=16),
-        text = element_text(family = "Helvetica"),
-        plot.background = element_rect(fill = 'ghostwhite',color='white')) +
-  labs(title = "Size of Artwork in MOMA",
-  subtitle = "In 10mx10m grid")
-gganimate(p, 'moma by year.gif')
+library(hexbin)
+
+
+
+df_topartist <- df%>% 
+  filter(!is.na(Name))%>% 
+  count(Name, sort=T) %>% head(8)
+
+df_hex <- df %>%
+  filter(Name %in% df_topartist$Name,
+         width<500, height<500) %>%
+  mutate(height_width_ratio = ifelse(!is.na(width), height/width, NA)) %>%
+  select(Name,width, height_width_ratio) %>%
+  na.omit %>% filter(width!=0)
+
+rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
+plot(hexbin(df_hex[,2:3]), colramp=rf, legend=0)
+```
+
+```{r loop}
+#pdf("hex.pdf")
+
+# Put 3 plots in one column on a single page
+par(mfrow=c(2,4))
+for (i in unique(df_hex$Name)) {
+      df=df_hex %>%filter(Name==i)
+      plot(hexbin(df[,2:3]), , main=i, colramp=rf, legend=0)
+     
+}
+ #dev.off()
+```
+
+```{r}
+# p <- df %>% 
+#   filter(width<1000, height<1000, !grepl("Archive",Department)) %>%
+#   ggplot(aes(frame=acqui_yr)) + 
+#   geom_rect(mapping=aes(xmin=0, xmax=width, ymin=0, ymax=height, 
+#             fill = Department),alpha=0.01) +
+#   facet_wrap(~Department, nrow=2) +
+#   theme_void() + 
+#   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+#         legend.position = 'None',
+#         plot.title = element_text(face="bold", size=16),
+#         text = element_text(family = "Helvetica"),
+#         plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+#   labs(title = "Size of Artwork in MOMA",
+#   subtitle = "In 10mx10m grid")
+# gganimate(p, 'moma by year.gif')
 ```
 
 
