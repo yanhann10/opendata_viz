@@ -14,8 +14,6 @@ library(reshape2)
 library(RColorBrewer)
 library(lubridate)
 library(tidytext)
-library(devtools)
-library(formattable)
 library(ggnetwork)
 library(ggraph)
 library(igraph)
@@ -99,7 +97,26 @@ plot(clp, g,
 
 
 ```{r commontopic}
-common = py_tag_freq %>%inner_join(tag_freq, by='Tag')
+library(ggrepel)
+common = py_tag_freq %>%inner_join(r_tag_freq, by='Tag')
+med_r=mean(r_tag_freq$n)
+med_py=mean(py_tag_freq$n)
+common_freq = common %>%
+  filter(n.x>med_py, n.y>med_r)
+
+common_freq %>%
+  ggplot(aes(n.x, n.y)) + 
+  geom_point() + 
+  ggtitle("") +
+  geom_text_repel(aes(label = ifelse(n.x>9000|n.y>2000, Tag,NA), vjust=-0.3))+
+  theme_minimal() + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Common tags among R and Python questions",
+  subtitle = "")
 ```
 
 
