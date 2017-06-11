@@ -18,6 +18,7 @@ library(ggnetwork)
 library(ggraph)
 library(igraph)
 library(sqldf)
+library(gridExtra)
 ```
 
 ## Load data
@@ -95,7 +96,7 @@ plot(clp, g,
 #how to filter out satellites (both nodes on a edge has one connection only), community with only two vertex
 ```
 
-
+#sameness
 ```{r commontopic}
 library(ggrepel)
 common = py_tag_freq %>%inner_join(r_tag_freq, by='Tag')
@@ -120,4 +121,47 @@ common_freq %>%
 ```
 
 
+#differences
+```{r uniquepy}
+p1= py_tag_freq %>%anti_join(r_tag_freq, by='Tag') %>%
+  arrange(-n)%>% 
+  head() %>%
+  ggplot(aes(reorder(Tag, n), n)) + 
+  geom_bar(stat='identity', width=0.5) + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal()+
+  theme_minimal() + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=12),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Unique among Python",
+  subtitle = "")
+```
+
+```{r uniquer}
+p2= r_tag_freq %>%anti_join(py_tag_freq, by='Tag') %>%
+  filter(Tag != 'python') %>%
+  arrange(-n)%>% 
+  head() %>%
+  ggplot(aes(reorder(Tag, n), n)) + 
+  geom_bar(stat='identity', width=0.5) + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal()+
+  theme_minimal() + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=12),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Unique among R",
+  subtitle = "")
+```
+
+```{r}
+grid.arrange(p1, p2, nrow=1)
+```
 
