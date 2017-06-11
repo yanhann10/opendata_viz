@@ -14,8 +14,6 @@ library(reshape2)
 library(RColorBrewer)
 library(lubridate)
 library(tidytext)
-library(devtools)
-library(formattable)
 library(ggnetwork)
 library(ggraph)
 library(igraph)
@@ -25,13 +23,29 @@ library(sqldf)
 ## Load data
 
 ```{r input}
+#python data from https://www.kaggle.com/stackoverflow/pythonquestions
 df<-read_csv('r_stackoverflow.csv')
 
 ```
 ```{r}
-tag_freq <- df %>% 
+df_r=df
+r_tag_freq <- df_r %>% 
   group_by(Tag) %>%
   count(Tag, sort=T)
+
+r_tag_freq %>% head%>% 
+  ggplot(aes(reorder(Tag, n), n)) + 
+  geom_bar(stat='identity', width=0.5) + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = "Top tags for R questions on Stackoverflow",
+  subtitle = "")
 ```
 
 ```{r}
@@ -71,8 +85,8 @@ V(g)$community <- clp$membership
 plot(clp, g,
      vertex.label = ifelse(degree(g) > 3,V(g)$name, NA),
      edge.arrow.mode=0, 
-     vertex.size=12,
-     vertex.label.color="black", vertex.label.font=2,
+     vertex.label.color="black", vertex.label.font=2, 
+     vertex.label.family = 'Helvetica',
      main = 'Related R questions on Stackoverflow')
 
 ```
@@ -97,4 +111,5 @@ ggplot(ggnetwork(n, layout = "kamadakawai"),
 
 ```
 
-## Takeaways
+
+
