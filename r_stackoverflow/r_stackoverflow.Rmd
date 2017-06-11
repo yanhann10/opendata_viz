@@ -1,0 +1,100 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/hannah/git_repo/opendata_viz/r_stackoverflow")
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(lubridate)
+library(tidytext)
+library(devtools)
+library(formattable)
+library(ggnetwork)
+library(ggraph)
+library(igraph)
+library(sqldf)
+```
+
+## Load data
+
+```{r input}
+df<-read_csv('r_stackoverflow.csv')
+
+```
+```{r}
+tag_freq <- df %>% 
+  group_by(Tag) %>%
+  count(Tag, sort=T)
+```
+
+```{r}
+co_occur = sqldf("SELECT a.Tag a, b.Tag b, COUNT(*) cnt
+FROM  df a 
+JOIN df b 
+ON b.Id = a.Id AND b.Tag > a.Tag
+GROUP BY a.Tag, b.Tag")
+```
+
+
+```{r}
+g <- co_occur %>% 
+  filter(cnt>150)  %>%
+  graph_from_data_frame() 
+
+V(g)$Popularity <- degree(g, mode = 'in')
+#V(g)$size=tag_freq[match(V(g)$name,tag_freq$Tag), 2]
+
+```
+
+```{r ggraph}
+g %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = cnt), show.legend = FALSE) +
+  geom_node_point(color = "purple",aes(size = Popularity)) +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_void() + 
+  theme(legend.position = 'None')
+```
+
+
+```{r community}
+clp <- cluster_label_prop(g)
+class(clp)
+V(g)$community <- clp$membership
+plot(clp, g,
+     vertex.label = ifelse(degree(g) > 3,V(g)$name, NA),
+     edge.arrow.mode=0, 
+     vertex.size=12,
+     vertex.label.color="black", vertex.label.font=2,
+     main = 'Related R questions on Stackoverflow')
+
+```
+
+```{r}
+#how to vary node size
+#how to filter out satellites (both nodes on a edge has one connection only), community with only two vertex
+```
+
+
+## Analysis
+
+```{r modelling}
+ggplot(ggnetwork(n, layout = "kamadakawai"),
+       aes(x, y, xend = xend, yend = yend)) +
+  geom_edges(aes(alpha = weight)) +
+  geom_nodelabel(aes(label = vertex.names, size = degree)) +
+  scale_alpha_continuous(guide = FALSE) +
+  scale_color_brewer(palette = "Set1", guide = FALSE) +
+  scale_size_continuous(range = c(3, 6), guide = FALSE) +
+  theme_blank()
+
+```
+
+## Takeaways
