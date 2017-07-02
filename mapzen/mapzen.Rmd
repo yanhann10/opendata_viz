@@ -1,0 +1,66 @@
+---
+title: ""
+output: html_document
+---
+
+
+## Load data
+
+```{r input}
+library(rmapzen)
+library(leaflet)
+Sys.setenv(MAPZEN_KEY = "mapzen-V62Srch")
+```
+
+```{r pre_process}
+ucb <- mz_geocode("Singapore Garden by the Bay, Singapore")
+isos <- mz_isochrone(
+    ucb,
+    costing_model = mz_costing$pedestrian(),
+    contours = mz_contours(c(5, 10, 20,30),
+    colors = c("ff0000", "31668d", "37b578", "fde725"))
+   
+)
+
+
+leaflet(as_sp(isos)) %>%
+    addProviderTiles(providers$CartoDB.Positron,
+    options = providerTileOptions(opacity = 0.35)) %>%
+    addPolygons(color = ~paste0("#", color), weight = 1) %>%
+    addLegend(colors = ~paste0("#", color), 
+              labels = ~paste(contour, "minutes"),
+              title = "Walk times")
+
+```
+
+## Data visualization
+
+```{r ggplot}
+ucb_tiles <- mz_vector_tiles(mz_bbox(isos))
+
+# vector tiles return all layers (roads, water, buildings, etc) in a list
+roads <- as_sp(ucb_tiles$roads)
+roads <- subset(roads, kind != "ferry")
+```
+
+## Analysis
+
+```{r modelling}
+library(ggplot2)
+roads_df <- fortify(roads) 
+
+ggplot(roads_df, aes(x = long, y = lat, group = group)) +
+    coord_quickmap() +
+    theme_void() +
+    
+    # add the road network
+    geom_path(size = .2, colour = "gray30") +
+    
+    # add the isochrones
+    geom_polygon(data = as.data.frame(isos),
+                 aes(x = lon, y = lat, group = contour),
+                 colour = NA, fill = "blue", alpha = .2)
+
+```
+
+## Takeaways
