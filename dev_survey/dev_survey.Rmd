@@ -1,0 +1,193 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(lubridate)
+library(tidytext)
+library(devtools)
+library(formattable)
+library(sqldf)
+library(ggraph)
+library(igraph)
+```
+
+## Load data
+
+```{r input}
+dev_survey <- read_csv("~/git_repo/opendata_viz/dev_survey/dev_survey.csv")
+
+```
+
+* Compare past and future skills
+* skills by data scientists
+
+```{r pre_process}
+df <- dev_survey %>%
+  select_if(grepl("HaveWorked", names(.))|grepl("WantWork", names(.))|grepl("Respondent", names(.))|grepl("^DeveloperType", names(.))) 
+```
+
+```{r split}
+df <- df %>%
+  mutate_each(splt = funs(strsplit(., ";")), HaveWorkedLanguage:WantWorkPlatform)
+```
+
+
+how many have multiple roles?
+```{r}
+mean(df$type==df$type_primary, na.rm=T)
+```
+
+
+#co-occurence networks 
+```{r}
+df_type <- df %>% 
+  select(Respondent, type) %>% 
+  unnest() %>%
+  mutate(type = trimws(type))%>% 
+  na.omit()
+```
+```{r}
+
+co_occur_type <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
+  FROM  df_type a 
+  JOIN df_type b 
+  ON b.Respondent = a.Respondent AND b.type > a.type
+  GROUP BY a.type, b.type") %>%
+  filter(cnt>=400) #first quartile
+
+co_occur_g <- co_occur_type%>%
+  graph_from_data_frame() 
+
+V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
+
+co_occur_g%>%
+  ggraph(layout = "fr") +
+  geom_edge_link( aes(color = "gold", edge_alpha = cnt), show.legend = FALSE) +
+  geom_node_point(color = "tomato", alpha=0.9, aes(size = size)) +
+  geom_node_text(color = "tomato", aes(label = name), size=3, repel = TRUE) +
+  theme_graph(background = 'grey20', text_colour = 'white') +
+  theme(legend.position = 'None')
+```
+
+
+```{r}
+framework <- df %>%
+  select_if(grepl("Framework", names(.))|grepl("Respondent", names(.))|grepl("DeveloperType", names(.))) %>%
+  na.omit()
+```
+
+* what's in wantedwork field that's not in haveworked field and vice versa
+```{r EDA}
+framework_l <- framework %>%
+  select(Respondent, HaveWorkedFramework) %>%
+  mutate(HaveWorkedFramework = strsplit(HaveWorkedFramework,";")) %>%
+  unnest()
+```
+
+
+```{r}
+co_occur_framework = sqldf("SELECT a.HaveWorkedFramework a, b.HaveWorkedFramework b, COUNT(*) cnt
+FROM  framework_l a 
+JOIN framework_l b 
+ON b.Respondent = a.Respondent AND b.HaveWorkedFramework > a.HaveWorkedFramework
+GROUP BY a.HaveWorkedFramework, b.HaveWorkedFramework")
+```
+
+```{r}
+co_occur_framework %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = cnt), show.legend = FALSE) +
+  geom_node_point(color = "purple") +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_void() + 
+  theme(legend.position = 'None')
+```
+
+
+```{r}
+framework <- df %>%
+  select_if(grepl("Framework", names(.))|grepl("Respondent", names(.))|grepl("DeveloperType", names(.))) %>%
+  na.omit()
+```
+
+* what's in wantedwork field that's not in haveworked field and vice versa
+```{r EDA}
+language_l <- df %>%
+  select(Respondent, HaveWorkedLanguage) %>%
+  mutate(item = strsplit(HaveWorkedLanguage,";")) %>%
+  unnest()
+
+language_new_l <- df %>%
+  select(Respondent, WantWorkLanguage) %>%
+  mutate(item = strsplit(WantWorkLanguage,";")) %>%
+  unnest()
+```
+
+
+```{r}
+co_occur_language = sqldf("SELECT a.item a, b.item b, COUNT(*) cnt
+FROM  language_l a 
+JOIN language_l b 
+ON b.Respondent = a.Respondent AND b.item > a.item
+GROUP BY a.item, b.item")
+```
+
+```{r}
+co_occur_language %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = cnt), show.legend = FALSE) +
+  geom_node_point(color = "purple") +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme(legend.position = 'None')
+```
+
+
+# new skills to have
+```{r}
+language_l %>% 
+  mutate(item = trimws(item)) %>% 
+  filter(!is.na(item)) %>%
+  group_by(item) %>%
+  summarize(n = n()) %>%
+  ggplot(aes(reorder(item, n), n)) + 
+  geom_bar(stat = 'identity', color='white') + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal()
+  
+```
+```{r}
+language_new_l %>% 
+  mutate(item = trimws(item)) %>% 
+  filter(!is.na(item)) %>%
+  group_by(item) %>%
+  summarize(n = n()) %>%
+  ggplot(aes(reorder(item, n), n)) + 
+  geom_bar(stat = 'identity', color='white') + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal()
+```
+##animating the difference
+```{r}
+library(gganimate)
+library(data.table)
+my.list <- list(df1, df2, …)
+tf <- tween_states(my.list, tweenlength= 2, statelength=3, ease=rep('cubic-in-out',51),nframes=100)
+dtf <- data.table(tf)
+p <- ggplot(aes( ,frame=.frame))
+gganimate(p, “ex2_tween.gif")
+```
+
+
