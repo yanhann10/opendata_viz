@@ -69,7 +69,7 @@ df %>%
   scale_y_continuous(labels=percent) +
   geom_vline(xintercept = medium_num_language, col='lightblue', linetype="dashed") +
   ggtitle("Number of languages developers use frequently") +
-  theme_minimal() +theme_minimal() +
+  theme_minimal() +
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
   plot.title = element_text(face="bold", size=16),
   axis.text = element_text(face="bold"),
@@ -95,6 +95,33 @@ df_type <- df %>%
   transmute(Respondent, type = trimws(DeveloperType))%>% 
   na.omit()
 ```
+
+```{r unique}
+df_respondent = df_type %>%
+  group_by(Respondent) %>%
+  summarize(n=n())
+
+df_type_smry = df_type %>%
+  left_join(df_respondent, by = "Respondent")  %>%
+  mutate(sole=ifelse(n==1,1,0))%>%
+  group_by(type) %>%
+  summarize(n_respondent=n(), n_sole=sum(sole))
+
+
+df_type_smry %>%
+  ggplot(aes(reorder(type,n_respondent))) +
+  geom_bar(aes(y=n_respondent),stat="identity", alpha=0.8) +
+  geom_bar(aes(y=n_sole),stat="identity",fill="gold", alpha=0.8, width=0.3) + 
+  coord_flip() +
+  theme_minimal() +
+  ggtitle('Number of respondents') + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white'))
+```
+
 
 ```{r}
 # i='DeveloperType'
