@@ -7,37 +7,46 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2) # Data visualization
 library(readr) # CSV file I/O, e.g. the read_csv function
-library(dplyr)
 library(tidyr)
-library(reshape2)
 library(RColorBrewer)
-library(lubridate)
-library(tidytext)
-library(devtools)
-library(formattable)
 library(sqldf)
 library(ggraph)
 library(igraph)
+library(dplyr)
 ```
+
+In this analysis we want to:
+
+* understand of network of developper types/language/frameworks and evolution of it
+  * Compare past and future skills
+  * zoom in to data scientists
 
 ## Load data
 
 ```{r input}
 dev_survey <- read_csv("~/git_repo/opendata_viz/dev_survey/dev_survey.csv")
-
 ```
 
-* Compare past and future skills
-* skills by data scientists
+
 
 ```{r pre_process}
 df <- dev_survey %>%
   select_if(grepl("HaveWorked", names(.))|grepl("WantWork", names(.))|grepl("Respondent", names(.))|grepl("^DeveloperType", names(.))) 
-```
 
-```{r split}
 df <- df %>%
-  mutate_each(splt = funs(strsplit(., ";")), HaveWorkedLanguage:WantWorkPlatform)
+  mutate_each(funs(strsplit(., ";")), -Respondent)
+```
+```{r}
+df=df %>%
+  mutate(new_language=mapply(function(x, y) toString(setdiff(x, y)),
+                             HaveWorkedLanguage, WantWorkLanguage),
+         new_framework=mapply(function(x, y) toString(setdiff(x, y)),
+                             HaveWorkedFramework, WantWorkFramework),
+         new_database=mapply(function(x, y) toString(setdiff(x, y)),
+                             HaveWorkedDatabase, WantWorkDatabase),
+         new_platform=mapply(function(x, y) toString(setdiff(x, y)),
+                             HaveWorkedPlatform, WantWorkPlatform)
+         )
 ```
 
 
@@ -183,7 +192,9 @@ language_new_l %>%
 ```{r}
 library(gganimate)
 library(data.table)
-my.list <- list(df1, df2, …)
+library(tweenr)
+my.list <- list(language_l, language_new_l)
+language_l_future = language_l %>%left_join(language_new_l, by='Respondent')
 tf <- tween_states(my.list, tweenlength= 2, statelength=3, ease=rep('cubic-in-out',51),nframes=100)
 dtf <- data.table(tf)
 p <- ggplot(aes( ,frame=.frame))
