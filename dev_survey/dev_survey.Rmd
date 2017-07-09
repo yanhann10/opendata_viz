@@ -21,7 +21,7 @@ In this analysis we want to:
   * Compare past and future skills
   * zoom in to data scientists
 
-## Load data
+Load data
 
 ```{r input}
 dev_survey <- read_csv("~/git_repo/opendata_viz/dev_survey/dev_survey.csv")
@@ -34,7 +34,7 @@ df <- dev_survey %>%
   select_if(grepl("HaveWorked", names(.))|grepl("WantWork", names(.))|grepl("Respondent", names(.))|grepl("^DeveloperType", names(.))) 
 
 df <- df %>%
-  mutate_each(funs(strsplit(., ";")), -Respondent)
+  mutate_each(funs(strsplit(., ";")), -Respondent) 
 ```
 ```{r}
 df=df %>%
@@ -46,24 +46,67 @@ df=df %>%
                              HaveWorkedDatabase, WantWorkDatabase),
          new_platform=mapply(function(x, y) toString(setdiff(x, y)),
                              HaveWorkedPlatform, WantWorkPlatform)
-         )
+         ) 
+  #%>%mutate_each(funs(strsplit(., ";")), new_language:new_platform) 
 ```
 
 
-how many have multiple roles?
+#How many languages do devs use?
 ```{r}
-mean(df$type==df$type_primary, na.rm=T)
+df = df %>%
+  rowwise() %>%
+  mutate(num_language=length(HaveWorkedLanguage),
+         num_roles=length(DeveloperType)) %>%
+  ungroup()
+
+medium_num_language = median(df$num_language)
+library(scales)
+df %>%
+  mutate(num_language=ifelse(num_language>=10,"More than 10", as.character(num_language))) %>%
+  ggplot(aes(num_language)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), width=0.5) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count", vjust = -0.25) +
+  scale_y_continuous(labels=percent) +
+  geom_vline(xintercept = medium_num_language, col='lightblue', linetype="dashed") +
+  ggtitle("Number of languages developers use frequently") +
+  theme_minimal() +theme_minimal() +
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white'))
+
+#num of roles vs num of language
+# df %>% 
+#   group_by(num_language, num_roles) %>%
+#   summarize(n=n())%>%
+#   ggplot(aes(num_language, num_roles)) + 
+#   geom_point(aes(size=n), alpha=0.8) + 
+#   ggtitle("") 
+#   theme_minimal()
 ```
 
 
 #co-occurence networks 
 ```{r}
 df_type <- df %>% 
-  select(Respondent, type) %>% 
+  select(Respondent, DeveloperType) %>% 
   unnest() %>%
-  mutate(type = trimws(type))%>% 
+  transmute(Respondent, type = trimws(DeveloperType))%>% 
   na.omit()
 ```
+
+```{r}
+# i='DeveloperType'
+# library(lazyeval)
+# df_type <- df %>% 
+#   select(Respondent, i) %>% 
+#     mutate_each(funs(strsplit(., ";")), -Respondent) %>%  
+#   unnest_() %>%
+#   mutate(type = trimws(i))%>% 
+#   na.omit()
+```
+
 ```{r}
 
 co_occur_type <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
@@ -71,20 +114,28 @@ co_occur_type <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
   JOIN df_type b 
   ON b.Respondent = a.Respondent AND b.type > a.type
   GROUP BY a.type, b.type") %>%
-  filter(cnt>=400) #first quartile
+  filter(cnt>=400) #first quartile }
 
 co_occur_g <- co_occur_type%>%
   graph_from_data_frame() 
 
 V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
+```
 
-co_occur_g%>%
+
+```{r}
+draw_co_occur = function(x) {
+  x%>%
   ggraph(layout = "fr") +
   geom_edge_link( aes(color = "gold", edge_alpha = cnt), show.legend = FALSE) +
-  geom_node_point(color = "tomato", alpha=0.9, aes(size = size)) +
-  geom_node_text(color = "tomato", aes(label = name), size=3, repel = TRUE) +
+  geom_node_point(color = "gold", alpha=0.8, aes(size = size)) +
+  geom_node_text(color = "gold", aes(label = name), size=3, repel = TRUE) +
   theme_graph(background = 'grey20', text_colour = 'white') +
-  theme(legend.position = 'None')
+  theme(legend.position = 'None') 
+}
+```
+```{r}
+draw_co_occur(co_occur_g)
 ```
 
 
@@ -201,4 +252,97 @@ p <- ggplot(aes( ,frame=.frame))
 gganimate(p, “ex2_tween.gif")
 ```
 
+# New languages/frameworks/platforms/databases devs want to work on (that they current don't work on)
 
+```{r}
+df_new_language <- df %>% 
+  select(Respondent, new_language) %>% 
+  mutate(new_language = strsplit(as.character(new_language),",")) %>% 
+  unnest() %>%
+  transmute(Respondent, type = trimws(new_language))%>% 
+  na.omit()
+```
+
+```{r}
+co_occur_language <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
+  FROM df_new_language a 
+  JOIN df_new_language  b 
+  ON b.Respondent = a.Respondent AND b.type > a.type
+  GROUP BY a.type, b.type") %>%
+  filter(cnt>=24) #first quartile }
+
+co_occur_g <- co_occur_language%>%
+  graph_from_data_frame() 
+V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
+
+draw_co_occur(co_occur_g)
+```
+
+```{r}
+df_new_platform <- df %>% 
+  select(Respondent, new_platform) %>% 
+  mutate(new_platform=strsplit(new_platform,",")) %>% 
+  unnest() %>%
+  transmute(Respondent, type = trimws(new_platform))%>% 
+  na.omit()
+```
+```{r}
+co_occur_platform <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
+  FROM df_new_platform a 
+  JOIN df_new_platform  b 
+  ON b.Respondent = a.Respondent AND b.type > a.type
+  GROUP BY a.type, b.type") %>%
+  filter(cnt>=24) #first quartile }
+
+co_occur_g <- co_occur_platform%>%
+  graph_from_data_frame() 
+V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
+
+draw_co_occur(co_occur_g)
+```
+
+```{r}
+df_new_framework <- df %>% 
+  select(Respondent, new_framework) %>% 
+  mutate(new_framework=strsplit(new_framework,",")) %>% 
+  unnest() %>%
+  transmute(Respondent, type = trimws(new_framework))%>% 
+  na.omit()
+```
+```{r}
+co_occur_framework <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
+  FROM df_new_framework a 
+  JOIN df_new_framework  b 
+  ON b.Respondent = a.Respondent AND b.type > a.type
+  GROUP BY a.type, b.type") %>%
+  filter(cnt>=24) #first quartile }
+
+co_occur_g <- co_occur_framework%>%
+  graph_from_data_frame() 
+V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
+
+draw_co_occur(co_occur_g)
+```
+
+```{r}
+df_new_database <- df %>% 
+  select(Respondent, new_database) %>% 
+  mutate(new_database=strsplit(new_database,",")) %>% 
+  unnest() %>%
+  transmute(Respondent, type = trimws(new_database))%>% 
+  na.omit()
+```
+```{r}
+co_occur_database <- sqldf("SELECT a.type a, b.type b, COUNT(*) cnt
+  FROM df_new_database a 
+  JOIN df_new_database  b 
+  ON b.Respondent = a.Respondent AND b.type > a.type
+  GROUP BY a.type, b.type") %>%
+  filter(cnt>=24) #first quartile }
+
+co_occur_g <- co_occur_database%>%
+  graph_from_data_frame() 
+V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
+
+draw_co_occur(co_occur_g)
+```
