@@ -12,6 +12,8 @@ library(RColorBrewer)
 library(sqldf)
 library(ggraph)
 library(igraph)
+library(stringr)
+library(scales)
 library(dplyr)
 ```
 
@@ -60,7 +62,7 @@ df = df %>%
   ungroup()
 
 medium_num_language = median(df$num_language)
-library(scales)
+
 df %>%
   mutate(num_language=ifelse(num_language>=10,"More than 10", as.character(num_language))) %>%
   ggplot(aes(num_language)) +
@@ -109,17 +111,18 @@ df_type_smry = df_type %>%
 
 
 df_type_smry %>%
-  ggplot(aes(reorder(type,n_respondent))) +
+  ggplot(aes(reorder(str_wrap(type, width = 30),n_respondent))) +
   geom_bar(aes(y=n_respondent),stat="identity", alpha=0.8) +
   geom_bar(aes(y=n_sole),stat="identity",fill="gold", alpha=0.8, width=0.3) + 
   coord_flip() +
   theme_minimal() +
-  ggtitle('Number of respondents') + 
+  ggtitle('Developer roles among respondents') + 
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
   plot.title = element_text(face="bold", size=16),
   axis.text = element_text(face="bold"),
   text = element_text(family = "Helvetica"),
-  plot.background = element_rect(fill = 'ghostwhite',color='white'))
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(subtitle = "The dark bar counts each mention of the role. The bright bar counts number of people who consider themselves only in that role", caption='@hannahyan | Source: Stackoverflow Developers Survey')
 ```
 
 
@@ -173,6 +176,7 @@ framework <- df %>%
 ```
 
 * what's in wantedwork field that's not in haveworked field and vice versa
+
 ```{r EDA}
 framework_l <- framework %>%
   select(Respondent, HaveWorkedFramework) %>%
@@ -182,47 +186,39 @@ framework_l <- framework %>%
 
 
 ```{r}
-co_occur_framework = sqldf("SELECT a.HaveWorkedFramework a, b.HaveWorkedFramework b, COUNT(*) cnt
+co_occur_g = sqldf("SELECT a.HaveWorkedFramework a, b.HaveWorkedFramework b, COUNT(*) cnt
 FROM  framework_l a 
 JOIN framework_l b 
 ON b.Respondent = a.Respondent AND b.HaveWorkedFramework > a.HaveWorkedFramework
 GROUP BY a.HaveWorkedFramework, b.HaveWorkedFramework")
+
+V(co_occur_g)$size <- degree(co_occur_g, mode = 'in')
 ```
 
 ```{r}
-co_occur_framework %>%
-  graph_from_data_frame() %>%
-  ggraph(layout = "fr") +
-  geom_edge_link(aes(edge_alpha = cnt), show.legend = FALSE) +
-  geom_node_point(color = "purple") +
-  geom_node_text(aes(label = name), repel = TRUE) +
-  theme_void() + 
-  theme(legend.position = 'None')
+draw_co_occur(co_occur_g)
 ```
 
 
-```{r}
-framework <- df %>%
-  select_if(grepl("Framework", names(.))|grepl("Respondent", names(.))|grepl("DeveloperType", names(.))) %>%
-  na.omit()
-```
 
 * what's in wantedwork field that's not in haveworked field and vice versa
 ```{r EDA}
 language_l <- df %>%
   select(Respondent, HaveWorkedLanguage) %>%
-  mutate(item = strsplit(HaveWorkedLanguage,";")) %>%
-  unnest()
+  unnest()%>%
+  transmute(Respondent, type = trimws(HaveWorkedLanguage))%>% 
+  na.omit()
 
 language_new_l <- df %>%
   select(Respondent, WantWorkLanguage) %>%
-  mutate(item = strsplit(WantWorkLanguage,";")) %>%
-  unnest()
+  unnest()%>%
+  transmute(Respondent, type = trimws(WantWorkLanguage))%>% 
+  na.omit()
 ```
 
 
 ```{r}
-co_occur_language = sqldf("SELECT a.item a, b.item b, COUNT(*) cnt
+co_occur_g = sqldf("SELECT a.item a, b.item b, COUNT(*) cnt
 FROM  language_l a 
 JOIN language_l b 
 ON b.Respondent = a.Respondent AND b.item > a.item
@@ -230,41 +226,38 @@ GROUP BY a.item, b.item")
 ```
 
 ```{r}
-co_occur_language %>%
-  graph_from_data_frame() %>%
-  ggraph(layout = "fr") +
-  geom_edge_link(aes(edge_alpha = cnt), show.legend = FALSE) +
-  geom_node_point(color = "purple") +
-  geom_node_text(aes(label = name), repel = TRUE) +
-  theme(legend.position = 'None')
+draw_co_occur(co_occur_g)
 ```
 
 
 # new skills to have
 ```{r}
-language_l %>% 
-  mutate(item = trimws(item)) %>% 
-  filter(!is.na(item)) %>%
-  group_by(item) %>%
-  summarize(n = n()) %>%
-  ggplot(aes(reorder(item, n), n)) + 
-  geom_bar(stat = 'identity', color='white') + 
-  coord_flip() + 
-  ggtitle("") +
-  theme_minimal()
-  
+language_l_agg <- language_l %>% 
+  group_by(type) %>%
+  summarize(n_current = n()) 
+
+language_new_l_agg <- language_new_l%>% 
+  group_by(type) %>%
+  summarize(n_new = n()) 
+
+language_evolve <- language_l_agg %>% left_join(language_new_l_agg)
+
 ```
+agg comparison
 ```{r}
-language_new_l %>% 
-  mutate(item = trimws(item)) %>% 
-  filter(!is.na(item)) %>%
-  group_by(item) %>%
-  summarize(n = n()) %>%
-  ggplot(aes(reorder(item, n), n)) + 
-  geom_bar(stat = 'identity', color='white') + 
-  coord_flip() + 
-  ggtitle("") +
-  theme_minimal()
+language_evolve %>%
+  ggplot(aes(reorder(str_wrap(type, width = 30),n_current))) +
+  geom_bar(aes(y=n_current),stat="identity", alpha=0.8) +
+  geom_bar(aes(y=n_new),stat="identity",fill="gold", alpha=0.8, width=0.3) + 
+  coord_flip() +
+  theme_minimal() +
+  ggtitle('Language skills devs have vs wish-to-have') + 
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(subtitle = "The dark bar counts each mention of current language skills.\nThe bright bar counts each mention of language skills devs wish to develop", caption='@hannahyan | Source: Stackoverflow Developers Survey')
 ```
 ##animating the difference
 ```{r}
