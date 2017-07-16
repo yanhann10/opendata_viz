@@ -17,14 +17,18 @@ library(tweenr)
 library(gganimate)
 library(ggthemes)
 library(dplyr)
+#text
 library(stringr)
 library(spacyr)
+library(tidytext)
+library(topicmodels)
 spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
 ```
 
 ```{r input, message=FALSE}
 #https://www.kaggle.com/benrudolph/unhcr-speeches
-df<- read_csv("~/git_repo/opendata_viz/refugee/refugee.csv") %>%
+df<- read_csv("~/git_repo/opendata_viz/refugee/refugee.csv") 
+df = df%>%
   mutate(content_cleaned = gsub("\\\\n","",df$content)) %>%
   separate(by, c("speaker", "dt"), sep=",") %>%
   mutate(dt = dmy(dt), yr = year(dt)) %>%
@@ -57,16 +61,18 @@ top_entity <- entity %>%
   slice(1:20)
 top_entity%>%
   ggplot(aes(reorder(entity, n), n)) + 
-  geom_bar(stat='identity') + 
+  geom_bar(stat='identity', aes(fill=entity_name), alpha=0.9) + 
   facet_wrap(~entity_name,scales = "free") +
   coord_flip() + 
   theme_minimal() +
   theme(axis.title.y = element_blank(), axis.title.x = element_blank(),
   plot.title = element_text(face="bold", size=16, hjust=0.5),
   text = element_text(family = "Helvetica"),
-  plot.background = element_rect(fill = rgb(204/255, 221/255, 230/255))) +
+  legend.position = 'None',
+  plot.margin=unit(c(0,1,1,1),"cm")) +
   labs(title = "Top mentions in UN Refugee Agency's Speeches",
   subtitle = "Institutes and places mentioned during 1951-2014") 
+
 ```
 ```{r ts}
 df$row_num=seq.int(nrow(df))
@@ -94,26 +100,69 @@ entity_ts%>%
   theme_minimal() +
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
         panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-  plot.title = element_text(face="bold", size=16),
+  plot.title = element_text(face="bold", size=16, hjust=0.5),
   legend.position='None',
   strip.text.y = element_text(angle=360),
   text = element_text(family = "Helvetica")) +
   ggtitle('Mentions of refugee countries 1951-2014') +
-  guides(alpha=FALSE)  
+  guides(alpha=FALSE)  + scale_x_continuous(breaks = seq(1950,2010,10)) 
 
 ```
 
 
-```{r topadj}
-parsedtxt %>%
-  filter(pos=='NOUN') %>%
-  group_by(token) %>%
-  summarize(n=n()) %>%
-  ungroup() %>%
-  arrange(desc(n)) %>%
-  head(10) %>%
-  ggplot(aes(reorder(token, n), n)) + 
-  geom_bar(stat='identity')
+```{r topicmodel}
+library(tm)
+
+clean_corpus <- function(corpus){
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removeWords, c(stopwords("en"), "amp","elonmusk"))
+return(corpus)
+}
+Corpus <- Corpus(VectorSource(df$content_cleaned))
+myCorpus <- clean_corpus(Corpus)
+
+dtm <- DocumentTermMatrix(myCorpus,
+control = list(wordLengths = c(2, Inf)))
+
 ```
 
+```{r}
+lda <- LDA(dtm, k = 5, control = list(seed = 1234))
+topics <- tidy(lda, matrix = "beta")
+topics
+```
+
+#Using cleanNLP
+```{r}
+content = df$content_cleaned
+write.csv(content, 'content.csv')
+```
+
+```{r}
+library(cleanNLP)
+init_spaCy(model_name = "en")
+anno <- run_annotators('content.csv')
+nlp <- get_combine(anno)
+```
+
+```{r}
+library(magrittr)
+word_action <- nlp %>%
+  filter(relation == "dobj") %>%
+  left_join(word_frequency, by = "word") %>%
+  filter(frequency < 0.001) %>%
+  select(id, word_source, word) 
+```
+```{r}
+word_action_smry <- word_action %>%
+  group_by(word_source, word) %>%
+  summarize(n=n())
+```
+
+```{r}
+library(networkD3)
+simpleNetwork(word_action_smry[word_action_smry$n>20,])
+```
 
