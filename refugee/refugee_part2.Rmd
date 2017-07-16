@@ -1,0 +1,104 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(newsflash)
+library(ggalt) # github version
+library(hrbrmisc) # github only
+library(tidyverse)
+starts <- as.Date("2000-01-01")
+ends <-as.Date("2017-07-01")
+#ends[length(ends)] <- ""
+
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+pb <- progress_estimated(length(starts))
+emails <- map2(starts, ends, function(x, y) {
+  pb$tick()$print()
+  query_tv("refugee", timespan="custom", start_date=x, end_date=y)
+})
+```
+
+```{r}
+tops <- map_df(emails, top_text)
+anti_join(tops, stop_words) %>% 
+  count(word, sort=TRUE) %>% 
+  print(n=20)
+```
+
+```{r}
+tv_refugee <- query_tv("refugees")
+arrange(tv_refugee$station_histogram, value) %>% 
+  mutate(station=factor(station, levels=station)) %>% 
+  ggplot(aes(value, station)) +
+  geom_lollipop(horizontal=TRUE, size=0.75) +
+  scale_x_continuous(limits = c(0,15000)) +
+   theme_minimal() +
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = 'Mention of refugees in TV news', 
+       subtitle = 'From 2009-07 to 2017-07',
+       caption='Source: newsflash | gdelt')
+```
+
+```{r}
+tv_refugee_txt <- tv_refugee$top_matches
+tv_content = tv_refugee_txt$snippet
+write.csv(tv_content, 'tv_content.csv')
+```
+
+```{r}
+library(cleanNLP)
+init_spaCy(model_name = "en")
+tv_anno <- run_annotators('tv_content.csv')
+tv_nlp <- get_combine(tv_anno)
+```
+
+```{r}
+library(magrittr)
+tv_word_action <- tv_nlp %>%
+  filter(relation == "dobj") %>%
+  left_join(word_frequency, by = "word") %>%
+  filter(frequency < 0.01) %>%
+  select(id, word_source, word, lemma, lemma_source) 
+#lemma_source contain lemmatized verb
+
+tv_top_word = tv_word_action %>%
+  group_by(word) %>%
+  summarize(n=n()) %>% top_n(12)
+
+tv_word_action_smry <- tv_word_action %>%
+  filter(word %in% tv_top_word$word) %>%
+  group_by(lemma_source, lemma) %>%
+  summarize(n=n())
+```
+```{r}
+tv_word_action_smry %>% arrange(-n) %>%
+  head(10) %>%
+  mutate(action = paste(lemma_source, lemma, sep=" ")) %>%
+  ggplot(aes(reorder(action, n), n)) +
+  geom_bar(stat = "identity", width=0.5) +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16),
+  axis.text = element_text(face="bold"),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = 'Top action-driven words in TV news', 
+       subtitle = 'From 2009-07 to 2017-07',
+       caption='Source: newsflash | gdelt')
+```
