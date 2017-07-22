@@ -1,0 +1,98 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(magrittr)
+#text
+library(tidytext)
+library(spacyr)
+library(cleanNLP)
+init_spaCy(model_name = "en")
+library(topicmodels)
+```
+
+## Load data
+
+```{r input}
+wine <- read_csv("~/git_repo/opendata_viz/wine/wine.csv")
+```
+
+```{r variety}
+variety <- wine %>% group_by(country, province) %>%
+  count(variety, sort=T) %>% top_n(1)
+```
+```{r producer}
+top_province <- wine %>% group_by(country, province) %>%
+  summarize(n=n()) %>%
+  arrange(-n) %>%head(8)
+```
+
+```{r}
+wine_select <- wine %>% 
+  filter(province %in% top_province$province) %>%
+  select(province, country, description, region_1)
+#wine_parsed <- spacy_parse(wine_select$description)
+# wine_parsed %>% filter(pos=='ADJ') %>% 
+#   get_tfidf(min_df = 0.05, max_df = 0.95, type = "tf", tf_weight = "raw") %$%
+#   LDA(tf, k = 16, control = list(verbose = 1))
+```
+```{r}
+province<-split(wine_select,wine_select$province)
+lapply(province, function(x) write.table(x, file=paste0(x[1,1], ".csv")))
+```
+
+
+```{r annotate}
+#setwd("/Users/hannah/git_repo/opendata_viz/wine")
+oregon_nlp <- get_combine(run_annotators('Oregon.csv'))
+burgundy_nlp <- get_combine(run_annotators('Burgundy.csv'))
+bordeaux_nlp <- get_combine(run_annotators('Bordeaux.csv'))
+mendoza_nlp <- get_combine(run_annotators('Mendoza Province.csv'))
+spain_nlp <-get_combine(run_annotators('Northern Spain.csv'))
+california_nlp <-get_combine(run_annotators('California.csv'))
+tuscany_nlp <-get_combine(run_annotators('Tuscany.csv'))
+washington_nlp <-get_combine(run_annotators('Washington.csv'))
+
+```
+
+
+
+```{r}
+top_adj = function(x) {x%>% filter(upos == 'ADJ', pos=='JJ') %>%
+  count(lemma, sort=T) %>% head(10)}
+oregon_adj <- top_adj(oregon_nlp)
+burgundy_adj <- top_adj(burgundy_nlp)
+bordeaux_adj <- top_adj(bordeaux_nlp)
+mendoza_adj <- top_adj(mendoza_nlp)
+spain_adj <-top_adj(spain_nlp)
+california_adj <-top_adj(california_nlp)
+tuscany_adj <-top_adj(tuscany_nlp)
+washington_adj <-top_adj(washington_nlp)
+```
+
+```{r}
+mylist <- list(oregon=oregon_adj, burgundy=burgundy_adj,
+               bordeaux=bordeaux_adj,mendoza=mendoza_adj,northernspain=spain_adj,
+               california=california_adj,tuscany=tuscany_adj,washington=washington_adj)
+
+all_adj <- do.call("rbind", mylist)
+all_adj$province <- rep(names(mylist), sapply(mylist, nrow))
+write.csv(all_adj, 'all_adj.csv')
+```
+
+
+
+```{r}
+all_adj %>% ggplot(aes(reorder(lemma, n), n)) + 
+geom_bar(stat="identity", position="identity", width=0.6, fill="darkred") + 
+coord_flip() + 
+ggtitle("") +
+theme_minimal() + coord_polar() + facet_grid(.~province,scales = "free_x")
+```
+
