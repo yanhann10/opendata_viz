@@ -25,12 +25,14 @@ wine <- read_csv("~/git_repo/opendata_viz/wine/wine.csv")
 
 ```{r variety}
 variety <- wine %>% group_by(country, province) %>%
-  count(variety, sort=T) %>% top_n(1)
+  count(variety, sort=T) %>% 
+  top_n(1)
 ```
 ```{r producer}
 top_province <- wine %>% group_by(country, province) %>%
   summarize(n=n()) %>%
-  arrange(-n) %>%head(8)
+  arrange(-n) %>%
+  head(8)
 ```
 
 ```{r}
@@ -38,6 +40,7 @@ wine_select <- wine %>%
   filter(province %in% top_province$province) %>%
   select(province, country, description, region_1)
 ```
+
 ```{r}
 #split a df into a list of df
 province<-split(wine_select,wine_select$province)
@@ -46,6 +49,8 @@ lapply(province, function(x) write.table(x, file=paste0(x[1,1], ".csv")))
 
 
 ```{r annotate}
+#run_annotators works on files path of csv, or df (must state as_strings = TRUE)
+#how to keep other columns if run_annotator on text col only?
 #setwd("/Users/hannah/git_repo/opendata_viz/wine")
 oregon_nlp <- get_combine(run_annotators('Oregon.csv'))
 burgundy_nlp <- get_combine(run_annotators('Burgundy.csv'))
@@ -64,9 +69,11 @@ washington_nlp <-get_combine(run_annotators('Washington.csv'))
 top_adj = function(x) {
   x %>% 
     filter(upos == 'ADJ', pos=='JJ') %>%
-    filter(!lemma %in% c('black','red','green','white','dark','yellow')) %>%
+    filter(!lemma %in% c('black','red','green','white','dark','yellow'),
+           word!='dried') %>%
     count(lemma, sort=T) %>% 
     head(10)}
+
 #apply a function to a list of dataframe
 oregon_adj <- top_adj(oregon_nlp)
 burgundy_adj <- top_adj(burgundy_nlp)
@@ -92,10 +99,32 @@ write.csv(all_adj, 'all_adj.csv')
 
 
 ```{r}
-all_adj %>% ggplot(aes(reorder(lemma, n), n)) + 
-geom_bar(stat="identity", position="identity", width=0.6, fill="darkred") + 
-coord_flip() + 
-ggtitle("") +
-theme_minimal() + coord_polar() + facet_grid(.~province,scales = "free_x")
+prov = c('California', 'Oregon','Burgundy','Bordeaux','Mendoza', 'Northernspain',
+         'Tuscany', 'Washington')
+par(mfrow = c(2, 4))
+
+radial_plot = function(x) {
+  all_adj %>% 
+  filter(province==x) %>%
+  ggplot(aes(reorder(lemma, -n), n)) + 
+  geom_bar(stat="identity", position="identity", width=0.6, fill="darkred") + 
+  coord_flip() + 
+  ggtitle("") +
+  theme_minimal() + coord_polar() +
+  theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+  plot.title = element_text(face="bold", size=16, hjust = 0.5),
+  axis.text.y = element_blank(),
+  axis.text.x = element_text(face="bold", size=10),
+  panel.grid.major = element_blank(),
+  text = element_text(family = "Helvetica"),
+  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+  labs(title = x,
+  subtitle = "") 
+}
+for (i in prov) {
+  p = radial_plot(i)
+  ggsave(p, file=paste(i, '.png'))
+}
 ```
+
 
