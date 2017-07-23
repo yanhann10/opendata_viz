@@ -1,5 +1,5 @@
 ---
-title: ""
+title: Text analysis of wine tasting notes
 output: html_document
 ---
 
@@ -37,12 +37,9 @@ top_province <- wine %>% group_by(country, province) %>%
 wine_select <- wine %>% 
   filter(province %in% top_province$province) %>%
   select(province, country, description, region_1)
-#wine_parsed <- spacy_parse(wine_select$description)
-# wine_parsed %>% filter(pos=='ADJ') %>% 
-#   get_tfidf(min_df = 0.05, max_df = 0.95, type = "tf", tf_weight = "raw") %$%
-#   LDA(tf, k = 16, control = list(verbose = 1))
 ```
 ```{r}
+#split a df into a list of df
 province<-split(wine_select,wine_select$province)
 lapply(province, function(x) write.table(x, file=paste0(x[1,1], ".csv")))
 ```
@@ -64,8 +61,13 @@ washington_nlp <-get_combine(run_annotators('Washington.csv'))
 
 
 ```{r}
-top_adj = function(x) {x%>% filter(upos == 'ADJ', pos=='JJ') %>%
-  count(lemma, sort=T) %>% head(10)}
+top_adj = function(x) {
+  x %>% 
+    filter(upos == 'ADJ', pos=='JJ') %>%
+    filter(!lemma %in% c('black','red','green','white','dark','yellow')) %>%
+    count(lemma, sort=T) %>% 
+    head(10)}
+#apply a function to a list of dataframe
 oregon_adj <- top_adj(oregon_nlp)
 burgundy_adj <- top_adj(burgundy_nlp)
 bordeaux_adj <- top_adj(bordeaux_nlp)
@@ -77,9 +79,10 @@ washington_adj <-top_adj(washington_nlp)
 ```
 
 ```{r}
-mylist <- list(oregon=oregon_adj, burgundy=burgundy_adj,
-               bordeaux=bordeaux_adj,mendoza=mendoza_adj,northernspain=spain_adj,
-               california=california_adj,tuscany=tuscany_adj,washington=washington_adj)
+#combine a list of df into one df
+mylist <- list(Oregon=oregon_adj, Burgundy=burgundy_adj,
+               Bordeaux=bordeaux_adj,Mendoza=mendoza_adj, Northernspain=spain_adj,
+               California=california_adj, Tuscany=tuscany_adj, Washington=washington_adj)
 
 all_adj <- do.call("rbind", mylist)
 all_adj$province <- rep(names(mylist), sapply(mylist, nrow))
