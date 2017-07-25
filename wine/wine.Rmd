@@ -38,64 +38,40 @@ top_province <- wine %>% group_by(country, province) %>%
 ```{r}
 wine_select <- wine %>% 
   filter(province %in% top_province$province) %>%
-  select(province, country, description, region_1)
+  select(province, country, description, region_1) %>%
+  mutate(id = row_number())
+
+#keep data of province to be joint to parsed text
+wine_index <- wine_select %>%
+  select(id, province)
 ```
 
 ```{r}
-#split a df into a list of df
-province<-split(wine_select,wine_select$province)
-lapply(province, function(x) write.table(x, file=paste0(x[1,1], ".csv")))
-```
-
-
-```{r annotate}
 #run_annotators works on files path of csv, or df (must state as_strings = TRUE)
-#how to keep other columns if run_annotator on text col only?
-#setwd("/Users/hannah/git_repo/opendata_viz/wine")
-oregon_nlp <- get_combine(run_annotators('Oregon.csv'))
-burgundy_nlp <- get_combine(run_annotators('Burgundy.csv'))
-bordeaux_nlp <- get_combine(run_annotators('Bordeaux.csv'))
-mendoza_nlp <- get_combine(run_annotators('Mendoza Province.csv'))
-spain_nlp <-get_combine(run_annotators('Northern Spain.csv'))
-california_nlp <-get_combine(run_annotators('California.csv'))
-tuscany_nlp <-get_combine(run_annotators('Tuscany.csv'))
-washington_nlp <-get_combine(run_annotators('Washington.csv'))
-
+wine_anno <-  get_combine(run_annotators(wine_select$description, as_strings = TRUE)) 
 ```
+```{r}
 
-
+wine_nlp <- wine_anno %>%
+  filter(upos == 'ADJ', pos=='JJ') %>%
+  filter(!lemma %in% c('black','red','green','white','dark','yellow'),
+           word!='dried') %>%
+  left_join(wine_index)
+```
 
 ```{r}
 top_adj = function(x) {
   x %>% 
-    filter(upos == 'ADJ', pos=='JJ') %>%
-    filter(!lemma %in% c('black','red','green','white','dark','yellow'),
-           word!='dried') %>%
+    group_by(province) %>%
     count(lemma, sort=T) %>% 
-    head(10)}
-
-#apply a function to a list of dataframe
-oregon_adj <- top_adj(oregon_nlp)
-burgundy_adj <- top_adj(burgundy_nlp)
-bordeaux_adj <- top_adj(bordeaux_nlp)
-mendoza_adj <- top_adj(mendoza_nlp)
-spain_adj <-top_adj(spain_nlp)
-california_adj <-top_adj(california_nlp)
-tuscany_adj <-top_adj(tuscany_nlp)
-washington_adj <-top_adj(washington_nlp)
+    top_n(10)
+}
 ```
 
 ```{r}
-#combine a list of df into one df
-mylist <- list(Oregon=oregon_adj, Burgundy=burgundy_adj,
-               Bordeaux=bordeaux_adj,Mendoza=mendoza_adj, Northernspain=spain_adj,
-               California=california_adj, Tuscany=tuscany_adj, Washington=washington_adj)
-
-all_adj <- do.call("rbind", mylist)
-all_adj$province <- rep(names(mylist), sapply(mylist, nrow))
-write.csv(all_adj, 'all_adj.csv')
+all_adj <- top_adj(wine_nlp)
+#write.csv(all_adj, 'all_adj.csv')
 ```
-
 
 
 ```{r}
@@ -107,7 +83,8 @@ radial_plot = function(x) {
   all_adj %>% 
   filter(province==x) %>%
   ggplot(aes(reorder(lemma, -n), n)) + 
-  geom_bar(stat="identity", position="identity", width=0.6, fill="darkred") + 
+  geom_point(aes(col="red"),size=4) +
+  geom_segment(aes(x = lemma, y = 0, xend = lemma, yend = n), color="darkred") +
   coord_flip() + 
   ggtitle("") +
   theme_minimal() + coord_polar() +
@@ -116,6 +93,7 @@ radial_plot = function(x) {
   axis.text.y = element_blank(),
   axis.text.x = element_text(face="bold", size=10),
   panel.grid.major = element_blank(),
+  legend.position='None',
   text = element_text(family = "Helvetica"),
   plot.background = element_rect(fill = 'ghostwhite',color='white')) +
   labs(title = x,
