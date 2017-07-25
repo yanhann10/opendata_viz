@@ -78,7 +78,7 @@ all_adj <- top_adj(wine_nlp)
 prov = c('California', 'Oregon','Burgundy','Bordeaux','Mendoza', 'Northernspain',
          'Tuscany', 'Washington')
 par(mfrow = c(2, 4))
-
+#free scale facet doesn't work with non-cartesian
 radial_plot = function(x) {
   all_adj %>% 
   filter(province==x) %>%
@@ -86,8 +86,7 @@ radial_plot = function(x) {
   geom_point(aes(col="red"),size=4) +
   geom_segment(aes(x = lemma, y = 0, xend = lemma, yend = n), color="darkred") +
   coord_flip() + 
-  ggtitle("") +
-  theme_minimal() + coord_polar() +
+  theme_minimal() + 
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
   plot.title = element_text(face="bold", size=16, hjust = 0.5),
   axis.text.y = element_blank(),
