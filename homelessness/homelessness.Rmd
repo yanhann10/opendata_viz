@@ -1,0 +1,124 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(lubridate)
+library(tidytext)
+library(devtools)
+library(formattable)
+library(waffle)
+library(extrafont)
+library(ggrepel)
+library(ggplot2) # Data visualization
+library(ggbeeswarm)
+library(gganimate)
+```
+
+## Load data
+
+```{r input}
+homelessness <- read_excel("~/git_repo/opendata_viz/homelessness/homelessness.xlsx")
+```
+
+
+```{r pre_process}
+df <- homelessness %>%
+  spread(Measures, Count) %>%
+  mutate(yr = year(ymd(Year)))
+
+```
+
+After 2015 the data became more granular
+```{r EDA}
+
+df %>% group_by(yr) %>%
+  summarize(chron = sum(`Sheltered Homeless Individuals`))
+```
+
+
+#sheltered vs otherwise, individual vs family
+```{r}
+df16 = df %>%
+  filter(yr == '2016')
+
+#sheltered
+df16 %>% 
+  summarize(pct_sheltered = sum(`Sheltered Homeless`)/sum(`Total Homeless`))
+
+#Chronic
+df16 %>% 
+  summarize(pct_chronic = sum(`Chronically Homeless`)/sum(`Total Homeless`))
+
+#inidividuals
+df16 %>% 
+  summarize(pct_family = sum(`Homeless People in Families`)/sum(`Total Homeless`))
+
+#youth
+df16 %>% 
+  summarize(pct_youth = sum(`Homeless Unaccompanied Youth (Under 25)`)/sum(`Total Homeless`))
+
+```
+```{r waffle}
+parts <- c(Sheltered=64, Unsheltered=36)
+waffle(parts, rows=10, size=1, colors=c("#009bda", "#969696"), 
+       title="Sheltered Homeless Percentage", legend_pos="bottom",
+       xlab="64% are sheltered in 2016")
+
+parts <- c(Chronic=16, Unsheltered=84)
+waffle(parts, rows=10, size=1, colors=c("#1879bf", "#969696"), 
+       title="Chronically Homeless Percentage", legend_pos="bottom",
+       xlab="16% are chronically homeless in 2016")
+       
+parts <- c(Family=35, Individual=65)
+waffle(parts, rows=10, size=1, colors=c("#FA6121", "#969696"), 
+       title="Homeless Family Percentage", legend_pos="bottom",
+       xlab="35% are homeless families in 2016")  
+
+parts <- c(Youth=6, Others=94)
+waffle(parts, rows=10, size=1, colors=c("#60A917", "#969696"), 
+       title="Homeless Youth Percentage", legend_pos="bottom",
+       xlab="6% are unaccompanied youth under 25 in 2016")
+```
+```{r state}
+df_state_yr <- df %>% 
+  group_by(State, yr) %>% 
+  summarize(pct_sheltered = sum(`Sheltered Homeless`)/sum(`Total Homeless`),
+            pct_chronic = sum(`Chronically Homeless`)/sum(`Total Homeless`),
+            pct_family = sum(`Homeless People in Families`)/sum(`Total Homeless`),
+            pct_youth = sum(`Homeless Unaccompanied Youth (Under 25)`)/sum(`Total Homeless`)) %>% 
+  gather(key, value, pct_sheltered:pct_youth) %>%
+  group_by(key) %>%
+  mutate(flag = ifelse(value==min(value)|value==max(value),1,0),
+         avg_pct = mean(value)) %>%
+  ungroup() 
+
+df_state_yr16 <- df_state_yr %>%
+  filter(yr==2016)
+```
+
+```{r beeswarm}
+df_state_yr16%>%
+  ggplot(aes(key, value)) +
+  geom_quasirandom(col="#009bda", alpha=0.9) + 
+  geom_text_repel(aes(label = ifelse(flag==1, State,"")), color="white")+
+  theme_minimal() +
+  theme(axis.title.y = element_blank(), axis.title.x = element_blank(),
+        panel.grid.minor = element_blank(), panel.grid.major = element_blank(),
+        plot.title = element_text(face="bold", size=16, color="white", hjust=0.4),
+        axis.text = element_text(face="bold", color="white"),
+        text = element_text(family = "Helvetica", color="white"),
+        plot.background = element_rect(fill = 'grey25',color='white')) +
+        labs(title = "Homelessness in the US",
+        subtitle = "")
+```
+
+
+
