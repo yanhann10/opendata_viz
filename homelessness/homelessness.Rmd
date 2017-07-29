@@ -25,6 +25,7 @@ library(gganimate)
 ## Load data
 
 ```{r input}
+#source: https://data.world/mschnars/2007-2016-homeless-point-in-time-count-by-coc
 homelessness <- read_excel("~/git_repo/opendata_viz/homelessness/homelessness.xlsx")
 ```
 
@@ -67,25 +68,31 @@ df16 %>%
 
 ```
 ```{r waffle}
+par(mfrow=c(2,2))
 parts <- c(Sheltered=64, Unsheltered=36)
-waffle(parts, rows=10, size=1, colors=c("#009bda", "#969696"), 
-       title="Sheltered Homeless Percentage", legend_pos="bottom",
+waffle(parts, rows=10, colors=c("#009bda", "#969696"), 
+       use_glyph="home", glyph_size=6,
+       title="Sheltered Homeless", legend_pos="bottom",
        xlab="64% are sheltered in 2016")
 
 parts <- c(Chronic=16, Unsheltered=84)
-waffle(parts, rows=10, size=1, colors=c("#1879bf", "#969696"), 
-       title="Chronically Homeless Percentage", legend_pos="bottom",
+waffle(parts, rows=10, colors=c("#1879bf", "#969696"), 
+       use_glyph="clock-o", glyph_size=6,
+       title="Chronically Homeless", legend_pos="bottom",
        xlab="16% are chronically homeless in 2016")
        
 parts <- c(Family=35, Individual=65)
-waffle(parts, rows=10, size=1, colors=c("#FA6121", "#969696"), 
-       title="Homeless Family Percentage", legend_pos="bottom",
+waffle(parts, rows=10,colors=c("#FA6121", "#969696"), 
+       use_glyph="users", glyph_size=6,
+       title="Homeless Family", legend_pos="bottom",
        xlab="35% are homeless families in 2016")  
 
 parts <- c(Youth=6, Others=94)
-waffle(parts, rows=10, size=1, colors=c("#60A917", "#969696"), 
-       title="Homeless Youth Percentage", legend_pos="bottom",
+waffle(parts, rows=10,  colors=c("#60A917", "#969696"),
+       use_glyph="child",  glyph_size=6,
+       title="Homeless Youth", legend_pos="bottom",
        xlab="6% are unaccompanied youth under 25 in 2016")
+
 ```
 ```{r state}
 df_state_yr <- df %>% 
