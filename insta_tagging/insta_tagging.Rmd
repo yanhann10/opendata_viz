@@ -1,5 +1,5 @@
 ---
-title: ""
+title: "Quantifying my instagram posts with Google Vision"
 output: html_document
 ---
 
@@ -28,10 +28,30 @@ googleAuthR::gar_auth()
 
 ```{r insta_authen}
 
-instaOAuth(app_id, app_secret, scope = c("basic", "public_content"))
+token <- instaOAuth(app_id, app_secret, scope = c("basic", "public_content"))
+```
+
+```{r scrap_recent}
+recentphoto <- getUserMedia("h_yan2", token, n = 30, 
+                            folder = "insta_tagging", 
+                            userid = NULL, verbose = TRUE)
+```
+```{r image_detection}
+label = getGoogleVisionResponse('insta_tagging/1500711116090031453_818716_h_yan2.jpg',
+                                              feature = 'LABEL_DETECTION')
+head(label)
+```
+
+```{r loop}
+files <- list.files(path="insta_tagging", pattern="*.jpg", full.names=T, recursive=FALSE)
+label <- sapply(files, function(x) {
+    t <- getGoogleVisionResponse(x, feature = 'LABEL_DETECTION')
+    list(t$description[1], t$description[2])
+}) 
+df_label <- t(as.data.frame(label))
 ```
 
 ```{r}
-
+as.data.frame(df_label)[,1]
 ```
 
