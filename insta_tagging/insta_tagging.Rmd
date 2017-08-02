@@ -1,0 +1,37 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+library(lubridate)
+#instagram scrapping
+library(instaR)
+```
+
+## Google Vision API
+
+```{r google_authen}
+creds = fromJSON('other_secret.json')
+options("googleAuthR.client_id" = creds$installed$client_id)
+options("googleAuthR.client_secret" = creds$installed$client_secret)
+options("googleAuthR.scopes.selected" = c("https://www.googleapis.com/auth/cloud-platform"))
+googleAuthR::gar_auth()
+```
+
+
+```{r insta_authen}
+
+instaOAuth(app_id, app_secret, scope = c("basic", "public_content"))
+```
+
+```{r}
+
+```
+
