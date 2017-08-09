@@ -126,7 +126,12 @@ df_country_recommend %>%
 ```
 
 
-Compare the review on each sub-category
+
+
+
+#PART 2: Clustering
+##which airlines are similar in subcategory
+
 ```{r sub-cat}
 df_airline_30 <- airline %>% 
   filter(!is.na(airline_name))%>% 
@@ -144,9 +149,6 @@ df_subcat <- airline %>%
 #write.csv(df_subcat, 'df_subcat.csv')
 ```
 
-
-#PART 2: Clustering
-##which airlines are similar in subcategory
 ```{r}
 #for showing labels on dendrogram it's necessary to have them as row.name of the dataframe
 df_subcat=as.data.frame(df_subcat)
@@ -170,7 +172,7 @@ colnames(df_subcat) = gsub("_rating", "", colnames(df_subcat))
  df_subcat = df_subcat %>%
    left_join(cls)
 
- i=1
+
  for( i in (1:6)){
   #mypath <- file.path(paste0("myplot_", i, ".png"))
   png(file=paste0("myplot_", i, ".png"))
