@@ -14,7 +14,7 @@ library(tidytext)
 library(spacyr)
 library(cleanNLP)
 init_spaCy(model_name = "en")
-library(topicmodels)
+#library(topicmodels)
 ```
 
 ## Load data
@@ -25,25 +25,26 @@ wine <- read_csv("~/git_repo/opendata_viz/wine/wine.csv")
 
 ```{r variety}
 variety <- wine %>% group_by(country, province) %>%
-  count(variety, sort=T) %>% 
+  dplyr::count(variety, sort=T) %>% 
   top_n(1)
 ```
 ```{r producer}
-top_province <- wine %>% group_by(country, province) %>%
-  summarize(n=n()) %>%
+top_province <- wine %>% 
+  dplyr::group_by(country, province) %>%
+  dplyr::summarize(n=n()) %>%
   arrange(-n) %>%
   head(8)
 ```
 
 ```{r}
 wine_select <- wine %>% 
-  filter(province %in% top_province$province) %>%
-  select(province, country, description, region_1) %>%
-  mutate(id = row_number())
+  dplyr::filter(province %in% top_province$province) %>%
+  dplyr::select(province, country, description, region_1, variety) %>%
+  dplyr::mutate(id = row_number())
 
 #keep data of province to be joint to parsed text
 wine_index <- wine_select %>%
-  select(id, province)
+  dplyr::select(id, province,variety)
 ```
 
 ```{r}
@@ -51,12 +52,22 @@ wine_index <- wine_select %>%
 wine_anno <-  get_combine(run_annotators(wine_select$description, as_strings = TRUE)) 
 ```
 ```{r}
-
 wine_nlp <- wine_anno %>%
   filter(upos == 'ADJ', pos=='JJ') %>%
   filter(!lemma %in% c('black','red','green','white','dark','yellow'),
            word!='dried') %>%
   left_join(wine_index)
+```
+
+```{r}
+top_word <- head(sort(table(wine_nlp$word), decreasing=T),20)
+
+    #   dry      ripe     sweet      rich      good      soft      full     crisp 
+    # 15810     14592     13196     12951      9651      8674      6487      6354 
+    # fresh    tannic    little      fine     spicy       new     smoky   complex 
+    #  6314      6194      5197      5144      4298      4207      4201      4177 
+    # clean    smooth    bright delicious 
+    #  4073      4017      3922      3704 
 ```
 
 ```{r}
@@ -74,7 +85,7 @@ all_adj <- top_adj(wine_nlp)
 ```
 
 
-```{r}
+```{r EDA}
 prov = c('California', 'Oregon','Burgundy','Bordeaux','Mendoza', 'Northernspain',
          'Tuscany', 'Washington')
 par(mfrow = c(2, 4))
@@ -104,4 +115,30 @@ for (i in prov) {
 }
 ```
 
+
+```{r}
+sample=as.data.frame(top_word)
+wine_flavor <- wine_nlp %>%
+  dplyr::filter(word %in% sample$Var1) %>%
+  dplyr::select(word, variety) %>%
+  dplyr::group_by(variety) %>%
+  dplyr::count(word) %>%
+  spread(word, n) %>%
+  na.omit()
+```
+
+
+
+```{r PCA}
+library(ggbiplot)
+wine_flavor.variety=wine_flavor$variety
+
+wine.pca <- prcomp(wine_flavor[,2:21], scale. = TRUE)
+ggbiplot(wine.pca, 
+         groups = wine_flavor.variety, labels= wine_flavor.variety
+         ) +
+  scale_color_discrete() +
+  theme(legend.direction = 'horizontal', legend.position = 'None') +
+  theme_void()
+```
 
