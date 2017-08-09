@@ -1,5 +1,5 @@
 ---
-title: ""
+title: "Who to fly with"
 output: html_document
 ---
 
@@ -35,6 +35,7 @@ library(fmsb)
 #Pre-processing
 
 ```{r input, warning = FALSE, error = FALSE, message=FALSE}
+#source https://github.com/quankiquanki/skytrax-reviews-dataset
 #airline by country:http://www.nationsonline.org/oneworld/major_airlines.htm
 #more airline by country: https://en.wikipedia.org/wiki/List_of_passenger_airlines
 airline <- read_csv("~/git_repo/opendata_viz/skytrax/airline.csv")
@@ -96,7 +97,7 @@ df_country_recommend$author_country = factor(df_country_recommend$author_country
 levels(df_country_recommend$author_country)
 ```
 
-## The 3 most reviewed airlines and their ratings by passenger country
+The 3 most reviewed airlines and their ratings by passenger country
 ```{r}
 #diverging palette need discrete scale
 df_country_recommend %>%
@@ -125,7 +126,7 @@ df_country_recommend %>%
 ```
 
 
-###compare the review on each sub-category
+Compare the review on each sub-category
 ```{r sub-cat}
 df_airline_30 <- airline %>% 
   filter(!is.na(airline_name))%>% 
@@ -203,31 +204,25 @@ corrplot.mixed(M, col=corrcol)
 #PART 3: NLP
 ```{r}
 #limit to 1 year
-airline15=airline %>% filter(year==2015, airline_name %in% df_airline_30$airline_name)
-anno <- run_annotators(airline15$content, as_strings = TRUE)
-nlp <- get_combine(anno)
+# airline15=airline %>% filter(year==2015, airline_name %in% df_airline_30$airline_name)
+# anno <- run_annotators(airline15$content, as_strings = TRUE)
+# nlp <- get_combine(anno)
 ```
 
 ```{r}
-airline15_idex <- airline15 %>%
-  mutate(id = row_number()) %>% 
-  dplyr::select(id, airline_name, recommended, year)
+# airline15_idex <- airline15 %>%
+#   mutate(id = row_number()) %>% 
+#   dplyr::select(id, airline_name, recommended, year)
+# 
+# 
+# token <- nlp %>% 
+#   # filter(upos=='ADJ', pos=='JJ', 
+#   #              lemma!='other', lemma_source!='be') %>%
+#   left_join(airline15_idex) %>%
+#   group_by(id, year, recommended) %>%
+#   dplyr::summarize(review_length = n())
 
-
-token <- nlp %>% 
-  # filter(upos=='ADJ', pos=='JJ', 
-  #              lemma!='other', lemma_source!='be') %>%
-  left_join(airline15_idex) %>%
-  group_by(id, year, recommended) %>%
-  dplyr::summarize(review_length = n())
+# token %>%
+#   ggplot(aes(as.factor(recommended), review_length))+
+#   geom_boxplot()
 ```
-```{r}
-token %>%
-  ggplot(aes(as.factor(recommended), review_length))+
-  geom_boxplot()
-```
-Negative reviews are longer in general
-
-
-
-
