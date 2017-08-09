@@ -1,0 +1,246 @@
+---
+title: ""
+output: html_document
+---
+
+In this analysis we'll analysis 45K skytrax review:
+
+* Do airlines form clusters, if so, is it similar to their alliances?
+* Do people prefer their national/region airlines more so than others?
+
+
+```{r setup, include=FALSE,warning = FALSE, error = FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(Hmisc)
+#text
+library(tidytext)
+library(cleanNLP)
+init_spaCy(model_name = "en")
+#machine learning
+library(caret)
+#dataviz
+library(ggplot2)
+library(igraph)
+library(ggraph)
+library(RColorBrewer)
+library(ggalt)
+library(ggthemes)
+library(ape)
+library(ggiraphExtra)
+library(MASS)
+library(fmsb)
+```
+
+## Load data
+
+```{r input, warning = FALSE, error = FALSE, message=FALSE}
+#airline by country:http://www.nationsonline.org/oneworld/major_airlines.htm
+#more airline by country: https://en.wikipedia.org/wiki/List_of_passenger_airlines
+airline <- read_csv("~/git_repo/opendata_viz/skytrax/airline.csv")
+```
+
+```{r pre_process}
+airline <- airline %>%
+  mutate(date = ymd(date), year = year(date)) %>%
+  filter(year > 2000)
+```
+
+we can see the review started in 2002 (1970 got to be an error, Skytrax wasn't even founded then) and 2015 isn't a full year at the time of data collection
+
+#EDA
+
+
+```{r}
+# df_recommend <- airline %>% 
+#   group_by(airline_name) %>%
+#   summarize(pct_recommend = mean(recommended), n_reviewed = n()) 
+```
+
+```{r}
+df_country <- airline %>% 
+  filter(!is.na(author_country))%>% 
+  group_by(author_country) %>%
+  count(sort = T) 
+
+#top 15 reviewer country
+df_country20 <- df_country%>%
+  head(15)
+```
+
+```{r}
+#top 20 airline
+df_airline_20 <- airline %>% 
+  filter(!is.na(airline_name))%>% 
+  group_by(airline_name) %>%
+  count(sort = T) %>%
+  head(20)
+```
+
+
+```{r 15rankingbycountry}
+#among airlines with more than median amount of review, choose the most recommended
+df_country_recommend <- airline %>%
+  filter(author_country %in% df_country20$author_country) %>%
+  group_by(airline_name, author_country) %>%
+  dplyr::summarize(pct_recommend = mean(recommended), n_reviewed = n()) %>%
+  ungroup %>%
+  group_by(author_country) %>%
+  mutate(mean_reviewed = mean(n_reviewed)) %>%
+  filter(n_reviewed >= mean_reviewed) %>%
+  arrange(desc(n_reviewed),desc(pct_recommend)) %>%
+  slice(1:3)
+```
+
+```{r}
+df_country_recommend$author_country = factor(df_country_recommend$author_country, levels = df_country20$author_country)
+levels(df_country_recommend$author_country)
+```
+
+## The 3 most reviewed airlines and their ratings by passenger country
+```{r}
+#diverging palette need discrete scale
+df_country_recommend %>%
+  mutate(if_recommend = ifelse(pct_recommend >= 0.8, 2, 
+                             ifelse(pct_recommend >= 0.6, 1,  
+                                    ifelse(pct_recommend >=0.4, 0,  
+                               ifelse(pct_recommend >= 0.2,-1, -2))))) %>%
+  ggplot(aes(reorder(airline_name, n_reviewed), n_reviewed)) +
+  geom_bar(stat = 'identity', 
+           aes(fill= as.factor(if_recommend)), width=0.2) + 
+  coord_flip() +
+  facet_wrap(~author_country, ncol=3, scales = "free_y") + 
+  theme_economist() + 
+  theme(axis.title = element_blank(),
+        plot.title = element_text(face="bold", size=16),
+        legend.position = "None",
+        panel.grid.major.y=element_blank(),
+        axis.line=element_blank(),
+        axis.text.y  = element_text(hjust=1)
+        ) +
+  labs(title = "Favorite Airlines by Reviewers' Country",
+       subtitle = "Ranked by number of reviews, colored by percent of positive reviews", 
+       caption = "Source: Skytrax") +
+  scale_fill_brewer( palette = "PiYG") 
+   
+```
+
+
+###compare the review on each sub-category
+```{r sub-cat}
+df_airline_30 <- airline %>% 
+  filter(!is.na(airline_name))%>% 
+  group_by(airline_name) %>%
+  count(sort = T) %>%
+  head(30)
+
+df_subcat <- airline %>%
+  filter(airline_name %in% df_airline_30$airline_name) %>%
+  dplyr::select(airline_name, seat_comfort_rating:value_money_rating) %>%
+  group_by(airline_name) %>%
+  summarise_all(mean,na.rm=TRUE) %>%
+  na.omit()
+#%>% gather(key, value, -airline_name)
+#write.csv(df_subcat, 'df_subcat.csv')
+```
+
+#sandbox
+```{r circular}
+#alternative
+# library(ggraph)
+# library(igraph)
+# gr <- graph_from_data_frame(flare$edges, vertices = flare$vertices)
+# 
+# 
+# ggraph(gr, layout = 'dendrogram', circular = TRUE) + 
+#     geom_edge_diagonal() + 
+#     geom_node_point(aes(filter = leaf)) + 
+#     coord_fixed()
+```
+
+
+```{r network}
+# df_country_recommend %>%
+#   select(airline_name, author_country, n_reviewed) %>%
+#   graph_from_data_frame() %>%
+#   ggraph(layout = "fr") +
+#   geom_edge_link( aes(color = "gold"), show.legend = FALSE) +
+#   geom_node_point(color = "gold", alpha=0.8) +
+#   geom_node_text(color = "gold", aes(label = name), size=3, repel = TRUE) +
+#   theme_graph(background = 'grey20', text_colour = 'white') +
+#   theme(legend.position = 'None')
+```
+
+#PART 2: Clustering
+##which airlines are similar in subcategory
+```{r}
+#for showing labels on dendrogram it's necessary to have them as row.name of the dataframe
+df_subcat=as.data.frame(df_subcat)
+row.names(df_subcat)=df_subcat$airline_name
+
+cols<-brewer.pal(n=6,name="Dark2")
+
+#hierarchical clustering
+hc=hclust(dist(df_subcat, method='euclidean'), 
+          method='ward.D2')
+
+plot(as.phylo(hc), type = "cladogram", cex = 0.9, tip.color = cols[cutree(hc,6)])
+```
+
+```{r radar}
+#remove rating from colnames
+colnames(df_subcat) = gsub("_rating", "", colnames(df_subcat))
+#add class label to df
+ cls = as.data.frame(cutree(hc,6))
+ cls$airline_name=row.names(cls)
+ df_subcat = df_subcat %>%
+   left_join(cls)
+
+ i=1
+ for( i in (1:6)){
+  mypath <- file.path(paste0("myplot_", i, ".png"))
+  png(file=mypath)
+  df_sub=df_subcat %>% filter(`cutree(hc, 6)`==i)
+  df_sub=rbind(rep(5,7) , rep(0,7) , df_sub)
+  radarchart((df_sub[,2:8]), pcol=cols[i], 
+             plwd=2, cglcol="lightgrey", vlcex=0.8 )
+  dev.off()
+}
+```
+
+
+
+#PART 3: NLP
+```{r}
+airline15=airline%>%filter(year==2015)
+anno <- run_annotators(airline15$content, as_strings = TRUE)
+nlp <- get_combine(anno)
+```
+
+```{r}
+nlp %>%
+  filter(pos %in% c("NN","NNS")) %>%
+  get_tfidf(min_df = 0.05, max_df = 0.95, type ="tfidf", )
+```
+```{r}
+nlp_matrix <- nlp %>%
+  filter(pos %in% c("NN","NNS")) %>%
+  get_tfidf(min_df = 0.05, max_df = 0.95, type ="tfidf", tf_weight='dnorm') 
+nlp_matrix%$%
+tidy_pca(tfidf)
+```
+
+```{r LDA}
+library(magrittr)
+library(topicmodels)
+# in review LDA would make sense on sentence but not word or paragraph
+# nlp_topic <- nlp %>%
+#   filter(pos %in% c("NN","NNS")) %>%
+#   get_tfidf(min_df = 0.05, max_df = 0.95, type ="tf", tf_weight='raw') %$%
+#   LDA(tf, k=16, control=list(verbose=0))
+# nlp_topic
+```
+```
+
+## Takeaways
