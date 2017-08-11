@@ -13,6 +13,7 @@ library(RColorBrewer)
 library(lubridate)
 #instagram scrapping
 library(instaR)
+library(ggimage)
 ```
 
 ## Google Vision API
@@ -27,18 +28,19 @@ googleAuthR::gar_auth()
 
 
 ```{r insta_authen}
-
+app_id=" "
+app_secret=" "
 token <- instaOAuth(app_id, app_secret, scope = c("basic", "public_content"))
 ```
 
 ```{r scrap_recent}
-recentphoto <- getUserMedia("h_yan2", token, n = 30, 
+recentphoto <- getUserMedia("h_yan2", token, n = 2, 
                             folder = "insta_tagging", 
                             userid = NULL, verbose = TRUE)
 ```
+##label detection
 ```{r image_detection}
-label = getGoogleVisionResponse('insta_tagging/1500711116090031453_818716_h_yan2.jpg',
-                                              feature = 'LABEL_DETECTION')
+label = getGoogleVisionResponse('insta_tagging/1500711116090031453_818716_h_yan2.jpg', feature = 'LABEL_DETECTION')
 head(label)
 ```
 
@@ -51,7 +53,36 @@ label <- sapply(files, function(x) {
 df_label <- t(as.data.frame(label))
 ```
 
-```{r}
-as.data.frame(df_label)[,1]
+
+```{r str}
+library(stringr)
+df_label$id <-sapply(df_label$X1, function(x){str_match(x, "g/(.*?)_h")[2]})
 ```
+
+
+```{r join}
+df_join <- recentphoto %>%
+  left_join(df_label, by = "id")
+```
+```{r}
+write.csv(df_join, 'df_join.csv')
+```
+
+```{r}
+# df_img = df_join %>%
+#   rowwise() %>% 
+#   mutate(image = paste0("insta_tagging/",id,"_h_yan2.jpg")) %>%
+#   mutate(created_day = date(created_time))
+# 
+# df_img %>%
+#   ggplot(aes(created_day,V1))+
+#   geom_image(aes(image=image), size=.3, by='width') + 
+#   theme_minimal() +
+#   theme(axis.title = element_blank(), 
+#   plot.title = element_text(face="bold", size=16),
+#   axis.text = element_blank(),
+#   panel.grid.minor = element_blank(),
+#   text = element_text(family = "Helvetica")) +
+#   labs(title = "",
+#   subtitle = "")
 
