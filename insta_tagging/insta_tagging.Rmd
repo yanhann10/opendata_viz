@@ -34,15 +34,11 @@ token <- instaOAuth(app_id, app_secret, scope = c("basic", "public_content"))
 ```
 
 ```{r scrap_recent}
-recentphoto <- getUserMedia("h_yan2", token, n = 2, 
+recentphoto <- getUserMedia("h_yan2", token, n = 20, 
                             folder = "insta_tagging", 
                             userid = NULL, verbose = TRUE)
 ```
 ##label detection
-```{r image_detection}
-label = getGoogleVisionResponse('insta_tagging/1500711116090031453_818716_h_yan2.jpg', feature = 'LABEL_DETECTION')
-head(label)
-```
 
 ```{r loop}
 files <- list.files(path="insta_tagging", pattern="*.jpg", full.names=T, recursive=FALSE)
@@ -67,22 +63,4 @@ df_join <- recentphoto %>%
 ```{r}
 write.csv(df_join, 'df_join.csv')
 ```
-
-```{r}
-# df_img = df_join %>%
-#   rowwise() %>% 
-#   mutate(image = paste0("insta_tagging/",id,"_h_yan2.jpg")) %>%
-#   mutate(created_day = date(created_time))
-# 
-# df_img %>%
-#   ggplot(aes(created_day,V1))+
-#   geom_image(aes(image=image), size=.3, by='width') + 
-#   theme_minimal() +
-#   theme(axis.title = element_blank(), 
-#   plot.title = element_text(face="bold", size=16),
-#   axis.text = element_blank(),
-#   panel.grid.minor = element_blank(),
-#   text = element_text(family = "Helvetica")) +
-#   labs(title = "",
-#   subtitle = "")
 
