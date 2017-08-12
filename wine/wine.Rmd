@@ -33,7 +33,7 @@ top_province <- wine %>%
   dplyr::group_by(country, province) %>%
   dplyr::summarize(n=n()) %>%
   arrange(-n) %>%
-  head(8)
+  head(9)
 ```
 
 ```{r}
@@ -81,50 +81,39 @@ top_adj = function(x) {
 
 ```{r}
 all_adj <- top_adj(wine_nlp)
-#write.csv(all_adj, 'all_adj.csv')
 ```
 
-
 ```{r EDA}
-prov = c('California', 'Oregon','Burgundy','Bordeaux','Mendoza', 'Northernspain',
-         'Tuscany', 'Washington')
-par(mfrow = c(2, 4))
-#free scale facet doesn't work with non-cartesian
-radial_plot = function(x) {
+prov = top_province$province
+par(mfrow = c(3, 3))
+#free scale facet doesn't work with non-cartesian coordinate
+#png() and dev.off won't truncate the plot while ggsave could
+radial_plot = function(x){
   all_adj %>% 
   filter(province==x) %>%
   ggplot(aes(reorder(lemma, -n), n)) + 
-  geom_point(aes(col="red"),size=4) +
-  geom_segment(aes(x = lemma, y = 0, xend = lemma, yend = n), color="darkred") +
+  geom_bar(stat="identity", fill="#9fb92d", color="#9fb92d",alpha=0.6, width=1) +
   coord_flip() + 
   theme_minimal() + 
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
-  plot.title = element_text(face="bold", size=16, hjust = 0.5),
-  axis.text.y = element_blank(),
-  axis.text.x = element_text(face="bold", size=10),
-  panel.grid.major = element_blank(),
-  legend.position='None',
-  text = element_text(family = "Helvetica"),
-  plot.background = element_rect(fill = 'ghostwhite',color='white')) +
+        plot.title = element_text(face="bold", size=16, hjust = 0.5),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(face="bold", size=14,color="#9fb92d"),
+        panel.grid.major = element_blank(),
+        legend.position='None',
+        text = element_text(family = "Helvetica"),
+        plot.background = element_rect(fill = 'ghostwhite',color='white')) +
   labs(title = x,
-  subtitle = "") 
+       subtitle = "") +coord_polar()
 }
+
+
 for (i in prov) {
+  png(file=paste0(i,".png"))
   p = radial_plot(i)
-  ggsave(p, file=paste(i, '.png'))
+  print(p)
+  dev.off()
 }
-```
-
-
-```{r}
-sample=as.data.frame(top_word)
-wine_flavor <- wine_nlp %>%
-  dplyr::filter(word %in% sample$Var1) %>%
-  dplyr::select(word, variety) %>%
-  dplyr::group_by(variety) %>%
-  dplyr::count(word) %>%
-  spread(word, n) %>%
-  na.omit()
 ```
 
 
