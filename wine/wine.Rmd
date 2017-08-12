@@ -36,6 +36,14 @@ top_province <- wine %>%
   head(9)
 ```
 
+```{r topproduce}
+top_produce <- wine %>% 
+  group_by(variety) %>%
+  summarize(n=n()) %>%
+  arrange(-n) %>%
+  head(9)
+```
+
 ```{r}
 wine_select <- wine %>% 
   dplyr::filter(province %in% top_province$province) %>%
@@ -59,6 +67,7 @@ wine_nlp <- wine_anno %>%
   left_join(wine_index)
 ```
 
+
 ```{r}
 top_word <- head(sort(table(wine_nlp$word), decreasing=T),20)
 
@@ -70,17 +79,19 @@ top_word <- head(sort(table(wine_nlp$word), decreasing=T),20)
     #  4073      4017      3922      3704 
 ```
 
-```{r}
-top_adj = function(x) {
+```{r topadj}
+#when passing colname need to use the standard evaluation versions of the dplyr functions (just append '_' to the function names, ie. group_by_ & summarise_)
+top_adj = function(x, y) {
   x %>% 
-    group_by(province) %>%
+    group_by_(y) %>%
     count(lemma, sort=T) %>% 
     top_n(10)
 }
 ```
 
+
 ```{r}
-all_adj <- top_adj(wine_nlp)
+all_adj_province <- top_adj(wine_nlp, "province")
 ```
 
 ```{r EDA}
@@ -89,8 +100,7 @@ par(mfrow = c(3, 3))
 #free scale facet doesn't work with non-cartesian coordinate
 #png() and dev.off won't truncate the plot while ggsave could
 radial_plot = function(x){
-  all_adj %>% 
-  filter(province==x) %>%
+  x %>%
   ggplot(aes(reorder(lemma, -n), n)) + 
   geom_bar(stat="identity", fill="#9fb92d", color="#9fb92d",alpha=0.6, width=1) +
   coord_flip() + 
@@ -98,7 +108,7 @@ radial_plot = function(x){
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
         plot.title = element_text(face="bold", size=16, hjust = 0.5),
         axis.text.y = element_blank(),
-        axis.text.x = element_text(face="bold", size=14,color="#9fb92d"),
+        axis.text.x = element_text(face="bold", size=14,color="#3a5f0b"),
         panel.grid.major = element_blank(),
         legend.position='None',
         text = element_text(family = "Helvetica"),
@@ -110,12 +120,17 @@ radial_plot = function(x){
 
 for (i in prov) {
   png(file=paste0(i,".png"))
-  p = radial_plot(i)
+  p = radial_plot(all_adj_province %>% 
+  filter(province==i))
   print(p)
   dev.off()
 }
 ```
 
+
+```{r}
+all_adj_variety <- top_adj(wine_nlp, "variety")
+```
 
 
 ```{r PCA}
