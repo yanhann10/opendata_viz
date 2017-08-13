@@ -16,24 +16,9 @@ library(RColorBrewer)
 library(lubridate)
 library(tweenr)
 library(gganimate)
+library(animation)
 library(ggtern)
 library(dplyr)
-```
-
-```{r input, message=FALSE}
-worldindex <- read_csv("~/git_repo/opendata_viz/worldindex/worldindex.csv")
-#could convert to country/region/continent
-worldindex$region= countrycode(worldindex$Id, 'country.name', 'region')
-#write.csv(worldindex,'worldindex.csv')
-SEA=worldindex %>% filter(region == 'South-Eastern Asia')
-```
-
-```{r preprocessing}
-# df <- SEA %>%
-#   select(Id, `Carbon dioxide emissions per capita 2011 Tones`, 
-#          `Forest area percentage of total land area 2012`) %>%
-#   gather(metrics, value, `Carbon dioxide emissions per capita 2011 Tones`, 
-#          `Forest area percentage of total land area 2012`)
 ```
 
 ```{r}
@@ -65,6 +50,7 @@ SEA=worldindex %>% filter(region == 'South-Eastern Asia')
 
 ```{r}
 Indicators$region= countrycode(Indicators$CountryName, 'country.name', 'region')
+Indicators$code= countrycode(Indicators$CountryName, 'country.name', 'iso2c')
 ```
 
 
@@ -81,42 +67,73 @@ df_energy = Indicators %>%
   spread(eletricity_source, Value)
 ```
 
-
 ```{r}
+my_theme <- function(base_size = 10, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=14),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    panel.grid.minor = element_blank(),
+    legend.position="bottom", legend.title=element_blank(),legend.text=element_text(size=6)
+    ) 
+}
+```
+
+```{r ter}
 #year 1995 - 2012 has consistent number of records
 sample=df_asia %>% filter(Year=='2012') 
 
 ternary_plot = function(i) {
   ggtern(i, aes(x = Nuclear, y = Nonrenewable, z = Renewable, col=region)) +
-    geom_point(shape=16, alpha=0.8) + theme_minimal() +
-    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
-    plot.title = element_text(face="bold", size=16),
-    axis.text = element_text(face="bold"),
-    text = element_text(family = "Helvetica"),
-    plot.background = element_rect(fill = 'ghostwhite',color='white')) +
-    labs(title = "",
-    subtitle = "")}
+    geom_point(shape = 17, alpha=0.8, size = 5) + 
+    geom_Lmark(alpha=0.1) +
+    my_theme()}
+
 ```
 
 ```{r asia}
-df_asia = df_energy %>% filter(grepl('Asia|Australia and New Zealand',region))
-ternary_plot(sample)
+df_asia = df_energy %>% filter(Year=='2012', grepl('Asia|Australia and New Zealand',region), !grepl('Western Asia',region))
+
+ternary_plot(df_asia) + 
+  geom_text(aes(label= ifelse(Nuclear>quantile(Nuclear, 0.9), CountryName,"")), size=2,hjust=-0.2) + 
+    scale_x_continuous(expand = c(.3, .0))
 ```
 
-```{r}
+```{r eu}
 sample_eu <- df_energy %>% 
-  filter(Year=='2012', grepl('Europe',region))
-ternary_plot(sample_eu)
+  filter(Year=='2012', grepl('Europe|Western Asia', region))
+
+ternary_plot(sample_eu) + 
+  geom_text(aes(label= ifelse(Nuclear >= quantile(Nuclear, 0.9), CountryName,"")), size=2,vjust=2) + 
+    scale_x_continuous(expand = c(.3, .0)) 
 ```
 
-```{r}
+
+
+```{r na}
 sample_americas <- df_energy %>% 
   filter(Year=='2012', grepl('America|Caribbean',region))
-ternary_plot(sample_americas)
+ternary_plot(sample_americas) + 
+  geom_text(aes(label= ifelse(Nuclear >= quantile(Nuclear, 0.9),CountryName,"")), size=2,vjust=2) + 
+    scale_x_continuous(expand = c(.3, .0))
 ```
 
 ```{r}
 sample_africa <- df_energy %>% 
   filter(Year=='2012', grepl('Africa',region))
-ternary_plot(sample_africa)
+ternary_plot(sample_africa) + 
+  geom_text(aes(label= ifelse(Nuclear >= 5 ,CountryName,"")), size=2,vjust=5.1) + 
+    scale_x_continuous(expand = c(.3, .0))
+```
+
+
+```{r euanimated}
+sample_eu <- df_energy %>% 
+  filter(grepl('Europe',region), Year>='2005',Year<'2013')
+
+p <-  ggtern(sample_eu, aes(x = Nuclear, y = Nonrenewable, z = Renewable, col=region, frame=.Year)) +
+    geom_point(shape=16, alpha=0.8)
+gganimate(p, "ggtern_tween.gif")
+
 ```
