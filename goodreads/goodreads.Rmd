@@ -1,0 +1,97 @@
+---
+title: "Goodreads"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(lubridate)
+library(tidytext)
+```
+
+## Load data
+
+```{r input}
+#exported from goodreads
+goodreads <- read_csv("~/git_repo/opendata_viz/goodreads/goodreads.csv")
+```
+
+```{r publishyr}
+library(zoo)
+df = goodreads %>%
+  filter(`Exclusive Shelf` == 'read') %>%
+  select(publish_yr = `Original Publication Year`, Bookshelves, added_dt = `Date Added`) %>%
+  mutate(added_yr = year(ymd(added_dt)), added_qtr = as.yearqtr(ymd(added_dt))) %>% 
+  mutate(read_time = ifelse(added_yr %in% c(2009,2010), 
+                            as.character(added_qtr), as.character(added_yr))) %>% 
+  filter(publish_yr>1700, added_yr>2007) %>% 
+  mutate(shelf = sapply(strsplit(Bookshelves, ","), "[", 1)) %>%
+  mutate(shelf = ifelse(is.na(shelf),'others',
+                        ifelse(shelf %in% c('a-b-c','communication','design','career'),'art/biz/comms',shelf)
+                        )) %>%
+  filter(!is.na(publish_yr)) %>% 
+  arrange(publish_yr) %>% 
+  mutate(y=0.5, yend=5, y2=0, y2end=0.5, idx=row_number(), pub = paste0(publish_yr, idx)) %>%
+  select(-Bookshelves)
+
+```
+
+```{r}
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_void() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face = "bold", size = 16),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    axis.text = element_blank(),
+    text = element_text(family = "Helvetica"),
+    legend.position="bottom", legend.title=element_blank(),legend.text=element_text(size=6))
+}
+```
+
+
+```{r pubyr}
+df %>% 
+ggplot(aes(pub, 4)) +
+  geom_segment(aes(x = pub, y = y, 
+                   xend = pub, yend = yend, col = shelf, alpha=0.3), size=0.5) + 
+  geom_segment(aes(x = pub, y = y2, 
+                   xend = pub, yend = y2end), , col = "ghostwhite") + 
+  scale_y_discrete(c(0,5)) + 
+  facet_wrap(~read_time) + 
+  coord_polar(start = pi*1.06) + guides(alpha=FALSE) +
+  my_theme() +
+  labs(title = "",
+  subtitle = "") +
+  scale_x_discrete(expand = c(.3, .0))
+
+```
+
+```{r readyr}
+df %>%
+ggplot(aes(added_dt, 4)) +
+  geom_segment(aes(x = added_yr, y = y, 
+                   xend = added_yr, yend = yend, col = shelf, alpha=0.8), size=0.5) + 
+  geom_segment(aes(x = added_yr, y = y2, 
+                   xend = added_yr, yend = y2end),  col = "ghostwhite") + 
+  scale_y_discrete(c(0,5)) +
+  coord_polar(start = pi / 1.9) + guides(alpha=FALSE) +
+  my_theme() +
+  labs(title = "",
+  subtitle = "")
+```
+
+```{r}
+goodreads %>%
+  select(Title) %>%
+  filter(!is.na(Title)) %>%
+  unnest_tokens(word, Title) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE)
+```
+
