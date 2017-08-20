@@ -1,0 +1,160 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(RColorBrewer)
+library(lubridate)
+library(tidytext)
+library(stringr)
+library(spacyr)
+library(treemap)
+library(cleanNLP)
+```
+
+## Load data
+
+```{r input}
+ufo <- read_csv("~/git_repo/opendata_viz/ufo/ufo.csv")
+```
+
+###color-shape combination
+###verb describing movements
+###formation (how many occur at once)
+```{r pre_process}
+colors = "red|orange|yellow|green|blue|purple|white|silver|black|gold|dark|amber"
+```
+
+```{r color}
+ufo <- ufo %>%
+  mutate(color = str_match(str_to_lower(comments), colors)) %>%
+  mutate(shape = ifelse(shape %in% c()))
+```
+
+```{r colorshape}
+ufo_color_shape <- ufo %>%
+  filter(!is.na(color), !is.na(shape)) %>%
+  mutate(color = replace(color, color == "dark", "black")) %>%
+  mutate(color = replace(color, color == "amber","orange")) %>%
+  mutate(shape = replace(shape, shape %in% c("unknown","other","pyramid","hexagon","dome","flare","crescent"),
+                         "other")) %>%
+  group_by(color, shape) %>%
+  summarize(n = n())
+#write.csv(ufo_color_shape, 'ufo_color_shape.csv')
+```
+
+## Data visualization
+```{r}
+treemap(ufo_color_shape,
+        index=c("color","shape"),
+        vSize = "n",  
+        #palette = "Dark2",
+        palette = c("#666666", #black
+                    "#1F78B4", #blue
+                    "#E6AB02", #gold
+                    "#1B9E77", #green
+                    "#D95F02", #orange
+                    "#7570B3", #purple
+                    "#E7298A", #red
+                    "#bdbdbd", #silver
+                    "#f0f0f0", #white
+                    "#FFFF33" #yellow
+        ),
+        type="index", 
+        title="Color and Shape of UFOs in reported sightings",
+        fontsize.title = 14 #Change the font size of the title
+        )
+```
+
+
+```{r}
+sample = ufo %>% #filter(color=='red',shape=='light')
+  filter(grepl("change",comments))
+```
+
+##movement: appear/shoot/descend/zigzag?
+```{r spacy}
+spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
+parsedtxt <- spacy_parse(ufo$comments)
+entity <- entity_extract(parsedtxt, type = "all")
+```
+```{r theme}
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    text = element_text(family = "Helvetica"),
+    legend.position="bottom",
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.title=element_blank(),legend.text=element_text(size=5))
+}
+```
+
+```{r}
+verb = parsedtxt %>%
+  filter(pos == 'VERB') %>%
+  count(lemma, sort=T) %>%
+  head(100) %>% 
+  filter(lemma %in% c("move","fly","hover","disappear","travel",
+                      "appear","glow","change","flash","shoot","float",
+                      "stop","vanish","fade","fall","blink","pulsate",
+                      "rotate","drop","speed","descend"))
+actionverb = paste(c("move","fly","hover","disappear","travel",
+                      "appear","glow","change","flash","shoot","float",
+                      "stop","vanish","fade","fall","blink","pulsate",
+                      "rotate","drop","speed","descend"), collapse = "|")
+ufo <- ufo %>%
+  mutate(movement = str_match(str_to_lower(comments), actionverb)) 
+
+
+```
+
+```{r}
+ufo_attribute <- ufo %>% filter(!is.na(color), !is.na(shape), !is.na(movement)) %>%
+  mutate(color = replace(color, color == "dark", "black")) %>%
+  mutate(color = replace(color, color == "amber","orange")) %>%
+  mutate(shape = replace(shape, shape %in% c("unknown","other","pyramid","hexagon","dome","flare","crescent"),
+                         "other")) %>%
+  group_by(color, movement) %>%
+  summarize(n = n())
+#write.csv(ufo_attribute, 'ufo_attribute.csv')
+
+
+```
+```{r}
+init_spaCy(model_name = "en")
+anno <- run_annotators(sample$comments,as_strings = TRUE)
+nlp <- get_combine(anno)
+nlp_lean <- nlp %>% 
+  select(id, word, lemma, relation, lemma_source)
+```
+
+```{r change}
+#dependency parsing or leading words or one of the color/shape attributes
+attributes = paste(unique(ufo$shape), collapse='|')
+ufo_change = nlp_lean %>%
+  mutate(next1 = lead(lemma, 1), next2 = lead(lemma, 2), next3 = lead(lemma, 3)) %>%
+  filter(lemma == 'change') %>%
+  mutate(combine = paste0(lemma_source, next1, next2, next3)) %>%
+  mutate(attribute = ifelse(grepl('color|colour', combine)|grepl(colors, combine),'color',
+                            ifelse(grepl('shape', combine)|grepl(attributes, combine),'shape',
+                           ifelse(grepl('direction', combine),'direction', 'others'))))
+```
+
+```{r}
+ufo_change %>%
+  filter(attribute!='others') %>%
+  group_by(attribute) %>%
+  summarize(n = n ()) %>%
+  ggplot(aes(reorder(attribute, n), n)) + 
+  geom_col(width=0.5) + 
+  coord_flip() + 
+  ggtitle("") +
+  my_theme() + 
+  ggtitle('changes in UFO attributes described in sightings')
+```
+
