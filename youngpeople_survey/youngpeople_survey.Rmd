@@ -1,0 +1,125 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(viridis)
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#animation
+library(tweenr)
+library(gganimate)
+```
+```{r theme}
+my_theme <- function(base_size = 12, base_family = "Helvetica") {
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face = "bold", size = 16),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    text = element_text(family = "Helvetica"),
+    panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank(),
+    legend.position='None')
+}
+```
+## Load data
+
+```{r input}
+youngpeople_survey <- read_csv("~/git_repo/opendata_viz/youngpeople_survey/youngpeople_survey.csv")
+```
+
+```{r pre_process}
+#bucket taken into consideration both similar number of samples and special ages like 18,21
+youngpeople_survey$Age_group = cut(youngpeople_survey$Age, breaks = c(15, 18, 21, 30))
+
+table(youngpeople_survey$Age_group)
+```
+
+## Data visualization
+
+```{r}
+#find consistently lowering or increasing
+df_fear = youngpeople_survey %>%
+  select(c(Flying:`Fear of public speaking`, Age_group)) %>%
+  filter(!is.na(Age_group)) %>%
+  group_by(Age_group) %>%
+  summarise_all(mean, na.rm=T) %>%
+  ungroup() %>%
+  gather(key, value, -Age_group) %>%
+  spread(Age_group, value) %>%
+  mutate(trend = ifelse((`(21,30]`<`(18,21]`) & (`(18,21]`<`(15,18]`),-1,
+                        ifelse((`(21,30]`>`(18,21]`) & (`(18,21]`>`(15,18]`) ,1,0))) %>%
+  gather(Age_group, value,`(15,18]`:`(21,30]`) %>%
+  mutate(Age_group = as.factor(Age_group), key = as.factor(key))
+
+```
+
+```{r}
+#every char in df must be factor for tweenr to work
+df_fears <- split(df_fear,df_fear$Age_group)
+tf <- tween_states(df_fears, tweenlength= 2, statelength=3, ease=rep('cubic-in-out',51),nframes=100)
+dtf <- data.table(tf) 
+```
+
+```{r fear}
+
+plot_by_age <- function (x) {
+  x%>% 
+    ggplot(aes(reorder(key,value), value,
+               frame = .frame, label = Age_group, col = as.factor(trend))) + 
+    geom_point(size = 5) + 
+    coord_flip() + 
+  scale_colour_manual(values = c("#68EFAD", "grey", "salmon")) + 
+    labs(title = 'How fear shift as people age',
+         subtitle = 'decreasing fear in green, increasing fear in red',
+         caption = 'source: Young People Survey') +
+    my_theme()
+}
+p <- plot_by_age(dtf)
+gganimate(p, "age_fear.gif", interval = 2)
+```
+
+
+
+```{r}
+df_interest = youngpeople_survey %>%
+  select(c(History:Pets, Age_group)) %>%
+  filter(!is.na(Age_group)) %>%
+  group_by(Age_group) %>%
+  summarise_all(mean, na.rm=T) %>%
+  ungroup() %>%
+  gather(key, value, -Age_group) %>%
+  spread(Age_group, value) %>%
+  mutate(trend = ifelse((`(21,30]`<`(18,21]`)&(`(18,21]`<`(15,18]`),-1,
+                        ifelse((`(21,30]`>`(18,21]`)&(`(18,21]`>`(15,18]`) ,1,0))) %>%
+  gather(Age_group, value,`(15,18]`:`(21,30]`) %>%
+  mutate(Age_group = as.factor(Age_group), key = as.factor(key))
+
+```
+
+```{r}
+#every char in df must be factor for tweenr to work
+df_interests <- split(df_interest,df_interest$Age_group)
+tf <- tween_states(df_interests, tweenlength = 2, statelength = 3, ease = rep('cubic-in-out',51),nframes=100)
+dtf <- data.table(tf) 
+```
+
+```{r interest_gif, fig.height=18}
+p <- dtf %>%
+     ggplot(aes(reorder(key,value), value, 
+                frame=.frame, label=Age_group, col=as.factor(trend))) + 
+    geom_point(size = 5) + 
+    coord_flip() + 
+  scale_colour_manual(values = c("salmon", "grey","#68EFAD")) + 
+    labs(title = 'How interest shift as people age',
+         subtitle = 'decreasing interest in red, increasing interest in green',
+         caption = 'source: Young People Survey') +
+    my_theme()
+gganimate(p, "age_interest.gif", interval = 2)
+
+```
