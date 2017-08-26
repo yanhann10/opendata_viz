@@ -1,0 +1,55 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error = FALSE)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(rPlotter)
+#scrape
+library(rvest)
+library(httr)
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#text
+library(tidytext)
+library(spacyr)
+```
+```{r theme}
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_void() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    axis.text = element_blank(),
+    text = element_text(family = "Helvetica"),
+    legend.position="bottom", legend.title=element_blank(),legend.text=element_text(size=5))
+}
+```
+
+
+## Color components of the covers
+
+```{r rplotter}
+files <- list.files(path="images", pattern="*.jpg", full.names=T, recursive=FALSE)
+cover_color <- sapply(files, function(x) {
+    t <- extract_colours(x, 3)
+})
+```
+
+```{r color}
+df_label <- data.frame(t(cover_color)) %>% mutate_all(as.character)
+```
+
+```{r fig.height=10}
+par(mfrow=c(7,6))
+for (i in 1:42) {
+  pie(rep(1, 3), col =  c(df_label[i,"X1"],df_label[i,"X2"],df_label[i,"X3"]), 
+      border = NA, label= NA)
+  }
+```
+
