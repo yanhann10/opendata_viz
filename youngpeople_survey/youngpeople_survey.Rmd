@@ -8,6 +8,9 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
 library(viridis)
+library(ggbiplot)
+library(ggfortify)
+library(Rtsne)
 #date
 library(lubridate)
 #machinelearning
@@ -24,7 +27,7 @@ my_theme <- function(base_size = 12, base_family = "Helvetica") {
     plot.background = element_rect(fill = 'ghostwhite',color='white'),
     text = element_text(family = "Helvetica"),
     panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank(),
-    legend.position='None')
+    legend.position = 'None')
 }
 ```
 ## Load data
@@ -66,6 +69,7 @@ tf <- tween_states(df_fears, tweenlength= 2, statelength=3, ease=rep('cubic-in-o
 dtf <- data.table(tf) 
 ```
 
+### how fears and interests change by age groups
 ```{r fear}
 
 plot_by_age <- function (x) {
@@ -123,3 +127,43 @@ p <- dtf %>%
 gganimate(p, "age_interest.gif", interval = 2)
 
 ```
+
+#clustering gender based on interests
+```{r}
+df <- youngpeople_survey %>% 
+  select(History:Pets, Gender) %>% 
+  na.omit()
+
+colnames(df) <- make.names(colnames(df), unique=TRUE)
+
+interests <- df %>% select(-Gender)
+groups <- as.factor(df$Gender)
+```
+
+##PCA
+```{r}
+autoplot(prcomp(interests), data = df, colour = 'Gender', frame.type = 'norm',
+         loadings = TRUE, loadings.label = TRUE, loadings.label.size  = 3) + 
+  my_theme() + 
+  coord_fixed()
+```
+
+
+```{r}
+#set colors
+colors = rainbow(2)
+names(colors) = unique(groups)
+#plot k-means
+autoplot(kmeans(interests, 2), data = interests, col=colors[groups]) + 
+  ggtitle('clustered with kmeans') + 
+  my_theme() 
+```
+
+```{r}
+fit.tsne <- Rtsne(interests, dims = 2, perplexity=40, verbose=TRUE, max_iter = 1000)
+```
+
+```{r}
+plot(fit.tsne$Y,pch=16, main="tsne", col=colors[groups]) 
+```
+
