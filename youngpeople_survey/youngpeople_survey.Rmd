@@ -159,11 +159,17 @@ autoplot(kmeans(interests, 2), data = interests, col=colors[groups]) +
   my_theme() 
 ```
 
+##t-sne
 ```{r}
-fit.tsne <- Rtsne(interests, dims = 2, perplexity=40, verbose=TRUE, max_iter = 1000)
+set.seed(100)
+fit.tsne <- Rtsne(interests, dims = 2, perplexity=40, verbose=TRUE, max_iter = 500)
 ```
 
 ```{r}
-plot(fit.tsne$Y,pch=16, main="tsne", col=colors[groups]) 
+d_tsne <- data.frame(fit.tsne$Y, Class = df$Gender)
+colnames(d_tsne) <- c("x", "y", "Class")
+d_tsne %>%
+  ggplot(aes(x, y, col=Class)) + geom_point() + 
+  ggtitle('t-sne on interests by gender') + my_theme()
 ```
 
