@@ -13,7 +13,8 @@ library(viridis)
 library(RColorBrewer)
 library(lubridate)
 library(ggbeeswarm)
-#animate
+#visualization
+library(formattable)
 library(tweenr)
 library(gganimate)
 library(dplyr)
@@ -39,7 +40,7 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 ```{r input, message=FALSE}
 start_eda=Sys.time()
 #data https://www.kaggle.com/hugodarwood/epirecipes
-epicurious_recipes <- read_csv("~/git_repo/opendata_viz/epicurious_recipes/epicurious_recipes.csv")
+epicurious_recipes_original <- read_csv("~/git_repo/opendata_viz/epicurious_recipes/epicurious_recipes.csv")
 
 ```
 
@@ -58,7 +59,7 @@ We need to parse out these different entities
 
 ##rating vs protein, sodium, salt etc
 ```{r preprocess}
-epicurious_recipes <- epicurious_recipes %>%
+epicurious_recipes <- epicurious_recipes_original %>%
   mutate(rating_rounded = round(rating)) %>%
   mutate(rating_bkt = ifelse(rating_rounded>=4,"good",ifelse(rating_rounded==3,"ok","bad"))) %>%
   filter(fat<quantile(fat,.8, na.rm=T), calories<quantile(calories, .8, na.rm=T), protein<quantile(protein,.8, na.rm=T),sodium<quantile(sodium,.8, na.rm=T))
@@ -70,6 +71,7 @@ content <- epicurious_recipes %>%
 
 content$rating_bkt <- factor(content$rating_bkt, levels = c("bad", "ok", "good"))
 
+#plot rating vs nutrients
 ggplot(content, aes(x=value,y=rating_bkt, fill=rating_bkt, alpha=0.6)) + 
   geom_joy() + facet_wrap(~key, scales="free", nrow=2) +
   labs(title='recipe rating vs calories, fat and protein', caption='source: Epicurious')+
@@ -90,32 +92,82 @@ tag <- epicurious_recipes %>%
 parsedtxt <- spacy_parse(tag$tag)
 ```
 
+```{r maketable}
+tabularize = function(i) {
+  i %>%
+    select(-c(rating)) %>%
+    summarize_all(sum) %>% 
+    gather(category,count) %>%
+    arrange(desc(count)) %>%
+    formattable(list(count = color_bar("pink")),
+    align = 'l')}
+```
+
 ```{r}
 state <- parsedtxt %>% filter(entity == 'GPE_B')
 
 df_state <- epicurious_recipes %>% 
-  select(one_of(state$lemma)) %>%
+  select(c(one_of(state$lemma),rating)) %>%
+  select(-one_of('turkey','saffron','rye','chartreuse'))%>%
   na.omit()
 
-df_state%>%summarize_all(sum)
+df_state%>%select(-rating)%>%summarize_all(sum)
+
+tabularize(df_state)
 ```
+
+
+
+##meal
 ```{r}
 meal = c('breakfast','brunch','lunch','dinner')
 
 df_meal <- epicurious_recipes %>% 
-  select(one_of(meal)) %>%
+  select(c(one_of(meal),rating)) %>%
   na.omit()
 
-df_meal%>%summarize_all(sum)
+df_season%>%select(-rating)%>%summarize_all(sum)
+tabularize(df_meal)
 ```
 
 ```{r}
+df_meal = df_meal%>%mutate(total=breakfast+brunch+lunch+dinner)%>%
+  filter(total==1)%>%select(-total)
+```
+
+
+```{r}
+ggplot(df_meal, aes(x=value,y=rating_bkt, fill=rating_bkt, alpha=0.6)) + 
+  geom_joy() + facet_wrap(~key, scales="free", nrow=2) +
+  labs(title='recipe rating vs calories, fat and protein', caption='source: Epicurious')+
+  my_theme()+guides(alpha=FALSE)
+```
+
+
+##season
+```{r}
+#filter for meal tagged to one season only
 season = c('spring','summer','fall','winter')
 df_season<- epicurious_recipes %>% 
-  select(one_of(season)) %>%
+  select(c(one_of(season),rating)) %>%
+  na.omit() #%>% 
+  # mutate(total=spring+summer+fall+winter) %>% 
+  # filter(total==1)
+
+df_season%>%select(-rating)%>%summarize_all(sum)
+tabularize(df_season)
+```
+
+
+##holiday
+```{r}
+holiday = c('christmas','fourth of july','passover','thanksgiving','easter','new year\'s eve')
+df_holiday<- epicurious_recipes %>% 
+  select(c(one_of(holiday),rating)) %>%
   na.omit()
 
-df_season%>%summarize_all(sum)
+
+tabularize(df_holiday)
 ```
 
 
@@ -130,9 +182,13 @@ data = df%>% select(rating_bkt,alcoholic:zucchini)%>%
 ```
 
 ```{r}
-rules <- apriori(data, parameter=list(support=0.001, confidence=0.5),
-                 appearance = list(rhs=c("rating_bkt=good", "rating_bkt=ok","rating_bkt=bad"),
+rules <- apriori(data, parameter=list(support=0.01, confidence=0.5),
+                 appearance = list(rhs=c("rating_bkt=good"),
                                    default="lhs"))
 inspect(head(sort(rules, by ="lift"),5))
 ```
+```{r}
+plot(rules, method="grouped")
+```
+
 
