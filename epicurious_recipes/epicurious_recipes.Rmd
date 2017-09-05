@@ -1,0 +1,138 @@
+---
+title: ""
+output: 
+    html_document: 
+      toc: true
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# This is a code block
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(caret) # Data visualization
+library(viridis)
+library(RColorBrewer)
+library(lubridate)
+library(ggbeeswarm)
+#animate
+library(tweenr)
+library(gganimate)
+library(dplyr)
+library(ggjoy)
+#text
+library(Hmisc)
+library(spacyr)
+#modeling
+library(arules)
+library(arulesViz)
+spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'top', legend.title = element_blank())
+}
+
+```
+
+```{r input, message=FALSE}
+start_eda=Sys.time()
+#data https://www.kaggle.com/hugodarwood/epirecipes
+epicurious_recipes <- read_csv("~/git_repo/opendata_viz/epicurious_recipes/epicurious_recipes.csv")
+
+```
+
+The tags contain:
+
+* state name: Alabama
+* drink name: bon apetit
+* meal type: breakfast
+* festival: 4th of jul
+* season: summer
+* diet type: soy free
+* cooking method: braise
+* ingredient: beef. 
+
+We need to parse out these different entities
+
+##rating vs protein, sodium, salt etc
+```{r preprocess}
+epicurious_recipes <- epicurious_recipes %>%
+  mutate(rating_rounded = round(rating)) %>%
+  mutate(rating_bkt = ifelse(rating_rounded>=4,"good",ifelse(rating_rounded==3,"ok","bad"))) %>%
+  filter(fat<quantile(fat,.8, na.rm=T), calories<quantile(calories, .8, na.rm=T), protein<quantile(protein,.8, na.rm=T),sodium<quantile(sodium,.8, na.rm=T))
+
+content <- epicurious_recipes %>%
+  select(c(calories:sodium, rating_bkt))%>%
+  na.omit() %>%
+  gather(key, value, -rating_bkt)
+
+content$rating_bkt <- factor(content$rating_bkt, levels = c("bad", "ok", "good"))
+
+ggplot(content, aes(x=value,y=rating_bkt, fill=rating_bkt, alpha=0.6)) + 
+  geom_joy() + facet_wrap(~key, scales="free", nrow=2) +
+  labs(title='recipe rating vs calories, fat and protein', caption='source: Epicurious')+
+  my_theme()+guides(alpha=FALSE) 
+```
+
+##most common ingredient
+```{r mostcommoningredient}
+tag <- epicurious_recipes %>% 
+  select(alabama:turkey) %>%
+  summarise_all(sum) %>%
+  gather(tag, count) %>%
+  arrange(desc(count)) %>%
+  mutate(tag = capitalize(tag))
+```
+
+```{r}
+parsedtxt <- spacy_parse(tag$tag)
+```
+
+```{r}
+state <- parsedtxt %>% filter(entity == 'GPE_B')
+
+df_state <- epicurious_recipes %>% 
+  select(one_of(state$lemma)) %>%
+  na.omit()
+
+df_state%>%summarize_all(sum)
+```
+```{r}
+meal = c('breakfast','brunch','lunch','dinner')
+
+df_meal <- epicurious_recipes %>% 
+  select(one_of(meal)) %>%
+  na.omit()
+
+df_meal%>%summarize_all(sum)
+```
+
+```{r}
+season = c('spring','summer','fall','winter')
+df_season<- epicurious_recipes %>% 
+  select(one_of(season)) %>%
+  na.omit()
+
+df_season%>%summarize_all(sum)
+```
+
+
+```{r}
+df <- epicurious_recipes %>% 
+  select(-one_of(state$lemma, meal, season)) %>%
+  na.omit()
+```
+```{r}
+data = df%>% select(rating_bkt,alcoholic:zucchini)%>%
+       mutate_all(funs(factor(.))) 
+```
+
+```{r}
+rules <- apriori(data, parameter=list(support=0.001, confidence=0.5),
+                 appearance = list(rhs=c("rating_bkt=good", "rating_bkt=ok","rating_bkt=bad"),
+                                   default="lhs"))
+inspect(head(sort(rules, by ="lift"),5))
+```
+
