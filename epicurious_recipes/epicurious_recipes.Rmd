@@ -26,6 +26,7 @@ library(spacyr)
 library(arules)
 library(arulesViz)
 spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
+#theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
     theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
@@ -57,15 +58,19 @@ The tags contain:
 
 We need to parse out these different entities
 
-##rating vs protein, sodium, salt etc
+##proprocessing
+Remove outliers
 ```{r preprocess}
 epicurious_recipes <- epicurious_recipes_original %>%
   mutate(rating_rounded = round(rating)) %>%
-  mutate(rating_bkt = ifelse(rating_rounded>=4,"good",ifelse(rating_rounded==3,"ok","bad"))) %>%
-  filter(fat<quantile(fat,.8, na.rm=T), calories<quantile(calories, .8, na.rm=T), protein<quantile(protein,.8, na.rm=T),sodium<quantile(sodium,.8, na.rm=T))
-
-
+  mutate(rating_bkt = ifelse(rating_rounded>=4,"good",
+                             ifelse(rating_rounded==3,"ok","bad"))) %>%
+  filter(fat<quantile(fat,.8, na.rm=T), 
+         calories<quantile(calories, .8, na.rm=T), 
+         protein<quantile(protein,.8, na.rm=T),
+         sodium<quantile(sodium,.8, na.rm=T))
 ```
+
 ##rating vs nutrients
 ```{r}
 content <- epicurious_recipes %>%
@@ -74,12 +79,6 @@ content <- epicurious_recipes %>%
   gather(key, value, -rating_bkt)
 
 content$rating_bkt <- factor(content$rating_bkt, levels = c("bad", "ok", "good"))
-
-#plot rating vs nutrients
-ggplot(content, aes(x=value,y=rating_bkt, fill=rating_bkt, alpha=0.6)) + 
-  geom_joy() + facet_wrap(~key, scales="free", nrow=2) +
-  labs(title='recipe rating vs calories, fat and protein', caption='source: Epicurious')+
-  my_theme()+guides(alpha=FALSE) 
 ```
 
 ```{r fun1_plot}
@@ -113,7 +112,7 @@ parsedtxt <- spacy_parse(tag$tag)
 ```{r fun2_bar}
 tabularize = function(i) {
   i %>%
-    select(-c(rating)) %>%
+    select(-c(rating, calories:sodium)) %>%
     summarize_all(sum) %>% 
     gather(category,count) %>%
     arrange(desc(count)) %>%
@@ -121,47 +120,12 @@ tabularize = function(i) {
     align = 'l')}
 ```
 
-##rating vs state
-```{r}
-state <- parsedtxt %>% filter(entity == 'GPE_B')
-
-df_state <- epicurious_recipes %>% 
-  select(c(one_of(state$lemma),rating)) %>%
-  select(-one_of('turkey','saffron','rye','chartreuse'))%>%
-  na.omit()
-
-df_state%>%select(-rating)%>%summarize_all(sum)
-
-tabularize(df_state)
-```
-
-```{r fun3_transpose}
-
-```
-
-
-```{r}
-plot_density(df_state, df_state$state)
-```
-
-
-##meal
-```{r}
-meal = c('breakfast','brunch','lunch','dinner')
-
-df_meal <- epicurious_recipes %>% 
-  select(c(one_of(meal),rating, calories:sodium)) %>%
-  na.omit()
-
-df_meal%>%select(-rating)%>%summarize_all(sum)
-tabularize(df_meal)
-```
-
 ```{r fun3_transpose_columns}
 transpose_columns = function (x) {
 df_total = x %>% 
   mutate(total = rowSums(select(., -c(rating:sodium))))%>%
   filter(total==1)
+
 df_lean = df_total %>%select(-c(rating:total))
 
 whichfield=function(x) colnames(df_lean)[[which(x==1)]]
@@ -170,44 +134,77 @@ df_lean$field=apply(df_lean,1,whichfield)
 df_transposed=df_total%>%
   select(-c(1:4)) %>%
   bind_cols(df_lean) %>%
-  select(c(calories:sodium, field))
+  select(c(calories:sodium, field)) %>%
+  gather(key, value, -field)
 return(df_transposed)
 }
 ```
 
-```{r}
-
+```{r fun4_select}
+df_select = function(x) {
+  epicurious_recipes %>% 
+  select(c(one_of(x),rating, calories:sodium)) %>%
+  select(-one_of('turkey','saffron','rye','chartreuse'))%>%
+  na.omit()
+}
 ```
 
-```{r}
-df_meal_nutrient <- transpose_columns(df_meal) %>%
-  gather(key, value, -field)
 
+
+##rating vs state
+```{r}
+state <- parsedtxt %>% filter(entity == 'GPE_B')
+
+df_state <- df_select(state$lemma)
+
+df_state%>%select(-rating)%>%summarize_all(sum)
+
+tabularize(df_state)
+```
+
+
+```{r fig.length=12}
+plot_density(transpose_columns(df_state),  transpose_columns(df_state)$field)
+```
+
+
+##meal vs nutrients
+```{r}
+meal = c('breakfast','brunch','lunch','dinner')
+
+df_meal <- df_select(meal)
+
+df_meal %>% select(-rating) %>% summarize_all(sum)
+tabularize(df_meal)
+```
+
+
+
+
+```{r}
+df_meal_nutrient <- transpose_columns(df_meal) 
+
+#reorder factor
 df_meal_nutrient$field <- factor(df_meal_nutrient$field, 
                                  levels = c("dinner", "lunch", "brunch","breakfast"))
 #plot rating vs nutrients
-
 plot_density(df_meal_nutrient, df_meal_nutrient$field) +
   labs(title='meal vs calories, fat and protein', caption='source: Epicurious')
 ```
 
 
-##season
+##season vs nutrients
 ```{r}
 #filter for meal tagged to one season only
 season = c('spring','summer','fall','winter')
-df_season<- epicurious_recipes %>% 
-  select(c(one_of(season),rating, calories:sodium)) %>%
-  na.omit() #%>% 
-  # mutate(total=spring+summer+fall+winter) %>% 
-  # filter(total==1)
+
+df_season<- df_select(season)
 
 df_season%>%select(-rating)%>%summarize_all(sum)
 tabularize(df_season)
 ```
 ```{r}
-df_season_nutrient <- transpose_columns(df_season) %>%
-  gather(key, value, -field)
+df_season_nutrient <- transpose_columns(df_season) 
 
 df_season_nutrient$field <- factor(df_season_nutrient$field, 
                                  levels = c("winter", "fall", "summer","spring"))
@@ -218,41 +215,36 @@ plot_density(df_season_nutrient, df_season_nutrient$field) +
 ```
 
 
-##holiday
+##holiday vs nutrients
 ```{r}
 holiday = c('christmas','fourth of july','passover','thanksgiving','easter','new year\'s eve')
-df_holiday<- epicurious_recipes %>% 
-  select(c(one_of(holiday),rating, calories:sodium)) %>%
-  na.omit()
 
+df_holiday<- df_select(holiday)
 
 tabularize(df_holiday)
 ```
-```{r}
-df_holiday_nutrient <- transpose_columns(df_holiday) %>%
-  gather(key, value, -field)
 
-# df_holiday_nutrient$field <- factor(df_holiday_nutrient$field, 
-#                                  levels = c("winter", "fall", "summer","spring"))
-#plot rating vs nutrients
+```{r}
+df_holiday_nutrient <- transpose_columns(df_holiday) 
 
 plot_density(df_holiday_nutrient, df_holiday_nutrient$field) +
   labs(title='holiday meal vs calories, fat and protein', caption='source: Epicurious')
 ```
 
-
 ##ingredients
 
 ```{r}
-df <- epicurious_recipes %>% 
-  select(-one_of(state$lemma, meal, season)) %>%
+df_ingredient <- epicurious_recipes %>% 
+  select(-one_of(state$lemma, meal, season, holiday)) %>%
   na.omit()
 ```
 
 ```{r}
-data = df%>% select(rating_bkt,alcoholic:zucchini)%>%
+data = df_ingredient%>% select(rating_bkt,alcoholic:zucchini)%>%
        mutate_all(funs(factor(.))) 
 ```
+
+
 
 
 ```{r}
