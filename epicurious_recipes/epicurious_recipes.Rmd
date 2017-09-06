@@ -23,6 +23,8 @@ library(ggjoy)
 library(Hmisc)
 library(spacyr)
 #modeling
+library(rpart)
+library(rpart.plot)
 library(arules)
 library(arulesViz)
 spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
@@ -85,7 +87,7 @@ content$rating_bkt <- factor(content$rating_bkt, levels = c("bad", "ok", "good")
 plot_density = function (df, facet) {
   ggplot(df, aes(x=value,y=facet, fill=facet, alpha=0.6)) + 
   geom_joy() + facet_wrap(~key, scales="free", nrow=2) +
-  labs(title='recipe rating vs calories, fat and protein', caption='source: Epicurious')+
+  labs(title='recipe rating vs nutrients', caption='source: Epicurious')+
   my_theme()+guides(alpha=FALSE) 
 }
 ```
@@ -189,7 +191,7 @@ df_meal_nutrient$field <- factor(df_meal_nutrient$field,
                                  levels = c("dinner", "lunch", "brunch","breakfast"))
 #plot rating vs nutrients
 plot_density(df_meal_nutrient, df_meal_nutrient$field) +
-  labs(title='meal vs calories, fat and protein', caption='source: Epicurious')
+  labs(title='meal vs calories, fat, protein and sodium', caption='source: Epicurious')
 ```
 
 
@@ -211,7 +213,7 @@ df_season_nutrient$field <- factor(df_season_nutrient$field,
 #plot rating vs nutrients
 
 plot_density(df_season_nutrient, df_season_nutrient$field) +
-  labs(title='seasonal meal vs calories, fat and protein', caption='source: Epicurious')
+  labs(title='seasonal meal vs calories, fat, protein and sodium', caption='source: Epicurious')
 ```
 
 
@@ -228,23 +230,68 @@ tabularize(df_holiday)
 df_holiday_nutrient <- transpose_columns(df_holiday) 
 
 plot_density(df_holiday_nutrient, df_holiday_nutrient$field) +
-  labs(title='holiday meal vs calories, fat and protein', caption='source: Epicurious')
+  labs(title='holiday meal vs calories, fat, protein and sodium', caption='source: Epicurious')
 ```
+##technique vs nutrients
+```{r}
+technique <- c('grill/barbecue','bake','roast','braise','fry','stir-fry','pan-fry','saute','no-cook')
+df_technique <- df_select(technique)
+tabularize(df_technique)
+```
+```{r}
+df_technique_nutrient <- transpose_columns(df_technique) 
+
+plot_density(df_technique_nutrient, df_technique_nutrient$field) +
+  labs(title='technique vs nutrients', caption='source: Epicurious')
+```
+
+#diet vs nutrients
+```{r}
+diet <- c('vegetarian','kosher',
+               'gourmet','kidney friendly', 'vegan','healthy','Low cholesterol','wheat/gluten-free')
+df_diet <- df_select(diet)
+tabularize(df_diet)
+```
+
+```{r}
+df_diet_nutrient <- transpose_columns(df_diet) 
+
+plot_density(df_diet_nutrient, df_diet_nutrient$field) + 
+  labs(title='diets vs nutrients', caption='source: Epicurious')
+```
+
 
 ##ingredients
 
 ```{r}
+drinks=c('drink','drinks')
 df_ingredient <- epicurious_recipes %>% 
-  select(-one_of(state$lemma, meal, season, holiday)) %>%
+  select(-one_of(state$lemma, meal, season, holiday, technique, drinks)) %>%
   na.omit()
 ```
 
+
 ```{r}
-data = df_ingredient%>% select(rating_bkt,alcoholic:zucchini)%>%
+data = df_ingredient%>% 
+  select(rating_bkt,alcoholic:zucchini)%>%
        mutate_all(funs(factor(.))) 
 ```
 
+```{r}
+data = epicurious_recipes %>% 
+  select(3:ncol(epicurious_recipes))%>%
+       mutate_all(funs(factor(.))) 
+```
 
+##decision tree
+
+```{r}
+
+tree <- rpart(rating_bkt ~ ., data=data)
+```
+```{r}
+prp(tree)
+```
 
 
 ```{r}
