@@ -47,7 +47,7 @@ epicurious_recipes_original <- read_csv("~/git_repo/opendata_viz/epicurious_reci
 
 ```
 
-The tags contain:
+Each recipe have multiple tags conveying a plurality of information:
 
 * state name: Alabama
 * drink name: bon apetit
@@ -249,6 +249,8 @@ plot_density(df_technique_nutrient, df_technique_nutrient$field) +
 ```{r}
 diet <- c('vegetarian','kosher',
                'gourmet','kidney friendly', 'vegan','healthy','Low cholesterol','wheat/gluten-free')
+
+other_diet <- c('soy free', 'peanut free','bon appétit','pescatarian','tree nut free','dairy free','no sugar added','kosher for passover')
 df_diet <- df_select(diet)
 tabularize(df_diet)
 ```
@@ -264,44 +266,79 @@ plot_density(df_diet_nutrient, df_diet_nutrient$field) +
 ##ingredients
 
 ```{r}
-drinks=c('drink','drinks')
+drinks=c('drink','drinks','cocktail party')
 df_ingredient <- epicurious_recipes %>% 
-  select(-one_of(state$lemma, meal, season, holiday, technique, drinks)) %>%
+  select(-c(1:6))%>% 
+  select(-one_of(meal,  diet,
+                               other_diet, drinks)) %>%
   na.omit()
 ```
 
 
 ```{r}
-data = df_ingredient%>% 
-  select(rating_bkt,alcoholic:zucchini)%>%
-       mutate_all(funs(factor(.))) 
-```
-
-```{r}
-data = epicurious_recipes %>% 
-  select(3:ncol(epicurious_recipes))%>%
-       mutate_all(funs(factor(.))) 
-```
-
-##decision tree
-
-```{r}
-
-tree <- rpart(rating_bkt ~ ., data=data)
-```
-```{r}
-prp(tree)
+data = df_ingredient%>%
+       mutate_all(funs(factor(.)))
 ```
 
 
-```{r}
-rules <- apriori(data, parameter=list(support=0.01, confidence=0.5),
-                 appearance = list(rhs=c("rating_bkt=good"),
-                                   default="lhs"))
-inspect(head(sort(rules, by ="lift"),5))
+
+## association rules
+Which ingredients appear together?
+Which non-ingredient tag are associated with good or bad?
+
+```{r fun5_arule}
+idx <- which(data==1, arr.ind = T)
+lst <- split(names(data)[idx[,2]], idx[,1])
+rules <- function(x, supp, rhs) { 
+  x %>% 
+    as("transactions") %>% 
+    apriori(parameter=list(minlen=2, maxlen=4, supp=supp,conf = 0.5), 
+            appearance = list(default="lhs",rhs=rhs),
+            control = list(verbose=F)) 
+}
 ```
 ```{r}
-plot(rules, method="grouped")
+rules_all <- function(x, supp) { 
+  x %>% 
+    as("transactions") %>% 
+    apriori(parameter=list(minlen=2, maxlen=4, supp=supp,conf = 0.4), 
+            #appearance = list(default="lhs",rhs=rhs),
+            control = list(verbose=F)) 
+}
+```
+
+```{r arule_holiday}
+all.rules.sorted <- sort(rules_all(lst,0.001), by="lift")
+all.rules.subset = subset(all.rules.sorted, subset = rhs %in% holiday
+    & lift > 2)
+plot(head(all.rules.subset,200), method="grouped")
+```
+
+```{r arule_season}
+all.rules.sorted <- sort(rules_all(lst,0.002), by="lift")
+all.rules.subset = subset(all.rules.sorted, subset = rhs %in% season
+    & lift > 1)
+plot(head(all.rules.subset,200), method="grouped")
+```
+
+```{r arule_state}
+all.rules.sorted <- sort(rules_all(lst,0.001), by="lift")
+all.rules.subset = subset(all.rules.sorted, subset = rhs %in% state$lemma
+    & lift > 1)
+plot(head(all.rules.subset,200), method="grouped")
+```
+
+```{r arule}
+rules.sorted <- sort(rules(lst,0.001,"summer"), by="lift")
+#inspect(head(rules.sorted,20))
+plot(head(rules.sorted,60), method="graph",
+     control = list(nodeCol = grey.colors(10), edgeCol = grey(.7), alpha = 0.9))
+```
+
+
+
+```{r}
+
 ```
 
 
