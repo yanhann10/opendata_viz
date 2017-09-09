@@ -8,6 +8,19 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 #trend
 library(gtrendsR)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(legend.text = element_text(color='white'),
+    plot.title = element_text(face="bold", size=16,color='white', hjust=-0.5),
+    plot.subtitle = element_text(color='white'),
+    plot.caption = element_text(color='white'),
+    strip.text = element_text(color='white'),
+    axis.text = element_text(face="bold",color='white'),
+    panel.grid = element_blank(),
+    plot.background = element_rect(fill = 'grey21',color='white'))
+}
+
 ```
 
 ##find top city hotspots and rising/breakout topics
@@ -46,6 +59,8 @@ trending_topic = function(term, year){
       filter(related_topics!='top') %>% head(10)
   
   df_topic=data.frame(rising = topic$subject,
+                      pct_growth = ifelse(topic$subject=="Breakout", 50,
+                                as.numeric(gsub(",","",substr(topic$subject, 2, nchar(topic$subject)-1)))/100),
                       category = topic$related_topics,
                       name =  topic$value,
                       keyword = topic$keyword)
@@ -71,3 +86,44 @@ sci_city=hotspot("data science", time)
 ```{r}
 sci_topic=trending_topic("data science", time)
 ```
+
+##visualize topics with rising trends
+
+```{r}
+#function for properly order column in facet
+ordered_facet_plot = function(df, color) {
+  df = df %>%
+  ungroup() %>%
+  arrange(year, pct_growth) %>%
+  mutate(order = row_number()) 
+
+df%>%
+  ggplot(aes(order, pct_growth)) + 
+  geom_col(fill=color) +
+  coord_flip() +
+  facet_wrap(~year, scales="free") +
+  my_theme() + 
+  scale_x_continuous(
+    breaks = df$order,
+    labels = df$name
+  )
+}
+
+```
+
+```{r}
+ordered_facet_plot(viz_topic, "yellow") + 
+  labs(title = 'Rising search topics related to data visualization by year', 
+       caption = 'source: Google Trends')
+```
+
+
+```{r}
+ordered_facet_plot(sci_topic, "peachpuff") + 
+  labs(title = 'Rising search topics related to data science by year', 
+       caption = 'source: Google Trends')
+```
+```{r}
+sessionInfo()
+```
+
