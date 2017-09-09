@@ -1,0 +1,73 @@
+---
+title: "Where people are most interested in Data Visualization and Data Science"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+#trend
+library(gtrendsR)
+```
+
+##find top city hotspots and rising/breakout topics
+```{r timeframe}
+time=c("2014-01-01 2014-12-31",
+       "2015-01-01 2015-12-31","2016-01-01 2016-12-31","2017-01-01 2017-08-31")
+
+```
+
+```{r fun1_city}
+output <- NULL
+
+hotspot = function(term, year){
+  for (i in year) {
+  gt=gtrends(term, time=i)
+  
+  top_city = head(gt$interest_by_city, 10)
+  df_city=data.frame(city = top_city$location,
+                     search_index = top_city$hits,
+                     keyword = top_city$keyword)
+  df_city$year=substr(i,1,4)
+  output <- rbind(output, df_city)
+  }
+  return(output)
+}
+```
+
+```{r fun2_trending_topic}
+output <- NULL
+
+trending_topic = function(term, year){
+  for (i in year) {
+  gt=gtrends(term, time=i)
+  #find rising & breakout (viral topic)
+  topic = gt$related_topics %>% 
+      filter(related_topics!='top') %>% head(10)
+  
+  df_topic=data.frame(rising = topic$subject,
+                      category = topic$related_topics,
+                      name =  topic$value,
+                      keyword = topic$keyword)
+  df_topic$year=substr(i,1,4)
+  output <- rbind(output, df_topic)
+  }
+  return(output)
+}
+```
+
+```{r}
+viz_city=hotspot("data visualization", time)
+```
+
+```{r}
+viz_topic=trending_topic("data visualization", time)
+```
+
+```{r}
+sci_city=hotspot("data science", time)
+```
+
+```{r}
+sci_topic=trending_topic("data science", time)
+```
