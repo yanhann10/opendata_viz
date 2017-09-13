@@ -1,0 +1,95 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(plyr)
+library(stringr)
+library(RColorBrewer)
+#tesseract
+library(deldir)
+library(rvest)
+library(rmapzen)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r input}
+#Specifying the url for desired website to be scrapped
+url <- 'https://guide.michelin.sg/en/2017-MICHELIN-guide-Singapore-full-results-restaurants'
+#Reading the HTML code from the website
+webpage <- read_html(url)
+```
+
+
+```{r pre_process}
+st_page <- read_html("http://www.straitstimes.com/lifestyle/food/full-list-of-michelin-starred-restaurants-for-2017")
+
+restaurants <- st_page%>%
+  html_nodes("#docs-internal-guid-765e48e9-f34b-7c88-5d95-042a93fcfda3") %>%
+  html_text() %>% as.data.frame()
+```
+
+```{r}
+address <- restaurants %>% 
+  mutate(addr = as.character(lead(.,1)))%>% 
+  filter(grepl('^\\d',.)) %>%
+  mutate(idx = as.numeric(str_extract(as.character(.), '^\\d+')),
+         name = str_replace(as.character(.), '^\\d+.',''),
+         addr = str_replace(addr, 'Address:','')
+         ) %>%
+  separate(name, into = c("restaurant", "locale"), sep = ",")%>%
+  select(-.) %>%
+  filter(addr!=' ')
+```
+```{r}
+#some address are missing, stepped in with manual cleaning
+write.csv(address,'address.csv')
+```
+
+##get geocode
+
+
+```{r}
+# not accurate
+# geocode= sapply(address$addr, mz_geocode) %>% t()
+# more accurate
+# https://batchgeo.com/map/0a43e789bd01d8e3323f36026f571672
+```
+
+
+```{r namelist}
+tbls <- html_nodes(webpage, "table")%>%
+        .[1:3] %>%
+        html_table(fill = TRUE) %>%
+        rbind.fill() 
+colnames(tbls) = c('restaurant' ,'cuisine')
+tbls <- tbls %>%
+        mutate(stars = c(rep(3,1), rep(2, 9), rep(1,31)),
+               restaurant=toupper(restaurant)) %>%
+        filter(restaurant!='Restaurant 餐馆') 
+
+```
+
+```{r}
+library(fuzzyjoin)
+joined <- address %>%
+  left_join(tbls)
+```
+
+
+
+
