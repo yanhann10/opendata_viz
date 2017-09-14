@@ -34,15 +34,26 @@ url <- 'https://guide.michelin.sg/en/2017-MICHELIN-guide-Singapore-full-results-
 webpage <- read_html(url)
 ```
 
+```{r}
+st_page %>% 
+  html_nodes(".odd > h3:nth-child(7) > span:nth-child(1) > span:nth-child(1)") %>% html_text()
+```
+
 ## scrap 
 
 ```{r pre_process}
 st_page <- read_html("http://www.straitstimes.com/lifestyle/food/full-list-of-michelin-starred-restaurants-for-2017")
 
+full_list <- st_page %>%
+   html_nodes("h3") %>%
+  html_text() %>% as.data.frame() 
+
 restaurants <- st_page%>%
   html_nodes("#docs-internal-guid-765e48e9-f34b-7c88-5d95-042a93fcfda3") %>%
-  html_text() %>% as.data.frame()
+  html_text() %>% as.data.frame()  %>% mutate(.=as.character(.))
 ```
+
+
 
 ## extract info from text
 ```{r}
@@ -50,7 +61,7 @@ address <- restaurants %>%
   mutate(addr = as.character(lead(.,1)))%>% 
   filter(grepl('^\\d',.)) %>%
   mutate(idx = as.numeric(str_extract(as.character(.), '^\\d+')),
-         name = str_replace(as.character(.), '^\\d+.',''),
+         name = trimws(str_replace(as.character(.), '^\\d+.','')),
          addr = str_replace(addr, 'Address:','')
          ) %>%
   separate(name, into = c("restaurant", "locale"), sep = ",")%>%
@@ -58,7 +69,7 @@ address <- restaurants %>%
   filter(addr!=' ')
 ```
 ```{r}
-#some address are missing, stepped in with manual cleaning
+#some address are missing, some manual cleaning
 write.csv(address,'address.csv')
 ```
 
@@ -71,10 +82,13 @@ tbls <- html_nodes(webpage, "table")%>%
 colnames(tbls) = c('restaurant' ,'cuisine')
 tbls <- tbls %>%
         mutate(stars = c(rep(3,2), rep(2, 8), rep(1,31)),
-               restaurant=toupper(restaurant)) %>%
+               restaurant=trimws(toupper(restaurant))) %>%
         filter(restaurant!='RESTAURANT 餐馆') 
 write.csv(tbls,'cuisines.csv')
 ```
 
+```{r}
+joined <- address %>% left_join(tbls)
+```
 
 
