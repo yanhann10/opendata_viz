@@ -3,7 +3,7 @@ title: "lego"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include = FALSE, error = FALSE}
 knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
@@ -55,13 +55,6 @@ colors <- colors %>%
          )
 ```
 
-```{r merge}
-merge <- sets %>% 
-  left_join(inventories, by = "set_num") %>%
-  left_join(inventory_parts, by = c("id" = "inventory_id")) %>%
-  left_join(colors, by = c("color_id" = "id")) 
-```
-
 ## main color
 scatter with lines chart (simple yet fun)
 
@@ -73,6 +66,13 @@ colors_rgb <- colors %>%
   select(r,g,b) %>% mutate_all(as.numeric)
 colors_hsv <- t(rgb2hsv(t(colors_rgb))) %>% as.data.frame()
 colors <- colors %>% cbind(colors_hsv)
+```
+
+```{r merge}
+merge <- sets %>% 
+  left_join(inventories, by = "set_num") %>%
+  left_join(inventory_parts, by = c("id" = "inventory_id")) %>%
+  left_join(colors, by = c("color_id" = "id")) 
 ```
 
 ```{r}
@@ -131,7 +131,7 @@ brick_colors_yr %>% group_by(year) %>%
   arrange(-n_col) %>% head()
 ```
 
-## color mix among top sets
+## color mix among top sets with most pieces
 
 ```{r}
 top20set <- sets %>% top_n(20, num_parts)
@@ -162,3 +162,41 @@ topsetcolor %>% group_by(name, hex, h) %>%
 dev.off()
 ```
 
+
+## color mix among top themes with most sets
+
+
+```{r}
+df_themes <- themes %>% 
+  left_join(merge, by =c("id" = "theme_id"))
+```
+
+```{r}
+top20theme <- df_themes %>% 
+  group_by(name) %>%
+  summarize(n = n_distinct(name.x)) %>% 
+  arrange(desc(n)) %>% head(20)
+topcolor <- top20theme %>% 
+  inner_join(df_themes, by = c("name" = "name"))
+g = df_themes %>% filter(name=='Clikits')
+```
+
+```{r}
+topcolor %>% group_by(name, hex, h) %>%
+  dplyr::summarize(n = sum(num_parts)) %>%
+  ggplot(aes(1, n, fill=reorder(hex,h))) + 
+  geom_bar(stat='identity', position = 'fill') +
+          scale_fill_manual(values = pal) +
+  labs(title ='Color Mix of Lego Themes with Most Sets', caption = "source: Rebrickable") +
+  coord_flip() +
+  facet_grid(name~., scales='free', switch="both") +
+  theme_void( ) + 
+  theme(axis.text.y=element_blank(),
+        axis.text.x=element_blank(),
+        strip.text.y=element_text(hjust=1),
+        plot.margin=unit(c(1,0,0.5,0),"cm"),
+        plot.title = element_text(hjust = -0.2)
+        ) + theme() +
+  my_theme() 
+
+```
