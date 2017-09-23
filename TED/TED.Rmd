@@ -16,6 +16,7 @@ library(lubridate)
 library(tidytext)
 library(stringr)
 library(spacyr)
+spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -167,8 +168,29 @@ u = rbind(t,c,s,g,d,e)
 write.csv(u, 'creative_ted.csv',row.names=F)
 ```
 
+## how does TED title looks like
 ```{r}
-u %>% mutate(yr=substr(publish_date, 4,7))
+title = talks %>% 
+  select(title) %>%
+  mutate(talk_title = sub('.*: ', '', title))
 ```
+
+```{r}
+parsedtxt <- spacy_parse(title$talk_title)
+```
+
+```{r}
+top_words <- parsedtxt %>% 
+  filter(pos %in% c('ADJ','NOUN','VERB')) %>%
+  group_by(pos, lemma) %>%
+  summarize(n = n()) %>%
+  anti_join(stop_words, by=c('lemma'='word')) %>%
+  ungroup %>%
+  filter(lemma!='-PRON-') %>%
+  group_by(pos) %>%
+  arrange(desc(n)) %>%
+  slice(1:10)
+```
+
 
 
