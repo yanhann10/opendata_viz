@@ -1,0 +1,174 @@
+---
+title: "TED"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#con-current part and whole
+library(UpSetR)
+#date
+library(lubridate)
+#text
+library(tidytext)
+library(stringr)
+library(spacyr)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+Opportunity for recommendation engine
+trend/pattern searching
+
+## Load data
+
+```{r input}
+talks <- read_csv("~/git_repo/opendata_viz/TED/talks.csv")
+favorites <- read_csv("~/git_repo/opendata_viz/TED/favorites.csv")
+```
+```{r}
+fav_agg <- favorites %>% 
+  group_by(talk) %>% 
+  summarize(n_fav = n())
+
+talks <- talks %>% 
+  left_join(fav_agg, c('title'='talk'))
+```
+
+```{r pre_process}
+themes = talks %>% 
+  select(title, related_themes, views) %>%
+  mutate(related_themes = gsub('\'|\"|\\[|\\]','',related_themes)) %>%
+  mutate(related_themes = strsplit(related_themes, ",")) %>% 
+  unnest(related_themes) %>%
+  mutate(related_themes=trimws(related_themes)) %>%
+  count(title, related_themes, views, sort=T)
+```
+
+## find 20 most common themes
+```{r}
+#find most common themes
+top_themes <- themes %>% 
+  count(related_themes, sort=T) %>%
+  head(30)
+#total 48 themes
+
+sum(top_themes$nn)/sum(themes$n)
+# top 30 themes contain 80% of all talks
+
+```
+
+```{r}
+# concat_themes <- paste(unlist(top_themes$related_themes), collapse='|')
+# contain_top_theme <- talks %>%
+#   filter(grepl(concat_themes, related_themes))%>%
+#   select(title, related_themes, views) %>%
+#   mutate(related_themes = gsub('\'|\"|\\[|\\]','',related_themes)) %>%
+#   mutate(related_themes = strsplit(related_themes, ",")) %>% 
+#   unnest(related_themes) %>%
+#   mutate(related_themes=trimws(related_themes)) %>%
+#   count(title, related_themes, views, sort=T)
+```
+
+```{r}
+#turn all na in df to 0
+x = themes %>% 
+  mutate(related_themes = ifelse(related_themes %in% top_themes$related_themes, related_themes, 'Others')) %>%
+  group_by(title,related_themes) %>%
+  summarize(views=sum(views)) %>%
+  ungroup() %>% mutate(n=1) %>%
+  spread(related_themes, n) 
+
+x[is.na(x)] <- 0
+#make sure it's a df, not tbl_df
+x=as.data.frame(x)
+```
+
+## overall themes
+
+## talks related to top10 themes
+ideally we want to use length to show viewership and color to show favorites
+
+```{r top10}
+#nsets will automaticall choose n sets to plot and group other sets under 'others', whereas specifying sets by name will not plot others
+upset(x,
+      #nsets=48,
+      sets = top_themes$related_themes, 
+      order.by = "freq",
+      mb.ratio = c(0.3, 0.7),#ratio between bar and matrix
+      main.bar.color = "#00acc1",
+      sets.bar.color = "#00acc1",
+      matrix.color = "#00acc1",
+      shade.color = '#daecff'
+      )
+```
+
+## top tags
+```{r}
+tags = talks %>% 
+  select(title, related_tags, views) %>%
+  mutate(related_tags = gsub('\'|\"|\\[|\\]','',related_tags)) %>%
+  mutate(related_tags = strsplit(related_tags, ",")) %>% 
+  unnest(related_tags) %>%
+  mutate(related_tags=trimws(related_tags)) %>%
+  count(title, related_tags, views, sort=T)
+
+#find most common themes
+top_tags <- tags %>% 
+  count(related_tags, sort=T) %>%
+  head(30)
+#total 298 tags
+sum(top_tags$nn)/sum(tags$n)
+#top tags account for 45% of all talks
+
+y = tags %>% 
+  mutate(related_tags = ifelse(related_tags %in% top_tags$related_tags, related_tags, 'Others')) %>%
+  group_by(title,related_tags) %>%
+  summarize(views=sum(views)) %>%
+  ungroup() %>% mutate(n=1) %>%
+  spread(related_tags, n) 
+
+y[is.na(y)] <- 0
+#make sure it's a df, not tbl_df
+y=as.data.frame(y)
+```
+
+```{r}
+upset(y,
+      #nsets=20,
+      sets = top_tags$related_tags, 
+      order.by = "freq",
+      mb.ratio = c(0.3, 0.7),
+      main.bar.color = "#4ecdc4",
+      sets.bar.color = "#4ecdc4",
+      matrix.color = "#4ecdc4",
+      shade.color = '#a2ded0'
+      )
+```
+
+```{r}
+t=talks %>% filter(grepl('Technology',related_tags))%>%mutate(tag='Technology')
+c=talks %>% filter(grepl('Culture',related_tags))%>%mutate(tag='Culture')
+s=talks %>% filter(grepl('Science',related_tags))%>%mutate(tag='Science')
+g=talks %>% filter(grepl('Global issues',related_tags))%>%mutate(tag='Global issues')
+d=talks %>% filter(grepl('Design',related_tags))%>%mutate(tag='Design')
+e=talks %>% filter(grepl('Design',related_tags))%>%mutate(tag='Entertainment')
+u = rbind(t,c,s,g,d,e) 
+write.csv(u, 'creative_ted.csv',row.names=F)
+```
+
+```{r}
+u %>% mutate(yr=substr(publish_date, 4,7))
+```
+
+
