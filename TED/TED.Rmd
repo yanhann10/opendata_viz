@@ -17,6 +17,8 @@ library(tidytext)
 library(stringr)
 library(spacyr)
 spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
+#recommenderrecommender
+library(recommenderlab)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -28,8 +30,8 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 }
 
 ```
-Opportunity for recommendation engine
-trend/pattern searching
+
+Based on data on kaggle with talks till 2012 that's since replaced by latest update till 2017
 
 ## Load data
 
@@ -56,7 +58,7 @@ themes = talks %>%
   count(title, related_themes, views, sort=T)
 ```
 
-## find 20 most common themes
+## The 30 most common themes
 ```{r}
 #find most common themes
 top_themes <- themes %>% 
@@ -69,17 +71,6 @@ sum(top_themes$nn)/sum(themes$n)
 
 ```
 
-```{r}
-# concat_themes <- paste(unlist(top_themes$related_themes), collapse='|')
-# contain_top_theme <- talks %>%
-#   filter(grepl(concat_themes, related_themes))%>%
-#   select(title, related_themes, views) %>%
-#   mutate(related_themes = gsub('\'|\"|\\[|\\]','',related_themes)) %>%
-#   mutate(related_themes = strsplit(related_themes, ",")) %>% 
-#   unnest(related_themes) %>%
-#   mutate(related_themes=trimws(related_themes)) %>%
-#   count(title, related_themes, views, sort=T)
-```
 
 ```{r}
 #turn all na in df to 0
@@ -95,10 +86,8 @@ x[is.na(x)] <- 0
 x=as.data.frame(x)
 ```
 
-## overall themes
-
-## talks related to top10 themes
-ideally we want to use length to show viewership and color to show favorites
+## Visualize
+Use UpSetR to show the freq across different combination of themes and topics
 
 ```{r top10}
 #nsets will automaticall choose n sets to plot and group other sets under 'others', whereas specifying sets by name will not plot others
@@ -114,7 +103,7 @@ upset(x,
       )
 ```
 
-## top tags
+## The 30 top tags
 ```{r}
 tags = talks %>% 
   select(title, related_tags, views) %>%
@@ -158,18 +147,23 @@ upset(y,
 ```
 
 ```{r}
-t=talks %>% filter(grepl('Technology',related_tags))%>%mutate(tag='Technology')
-c=talks %>% filter(grepl('Culture',related_tags))%>%mutate(tag='Culture')
-s=talks %>% filter(grepl('Science',related_tags))%>%mutate(tag='Science')
-g=talks %>% filter(grepl('Global issues',related_tags))%>%mutate(tag='Global issues')
-d=talks %>% filter(grepl('Design',related_tags))%>%mutate(tag='Design')
-e=talks %>% filter(grepl('Design',related_tags))%>%mutate(tag='Entertainment')
-u = rbind(t,c,s,g,d,e) 
-write.csv(u, 'creative_ted.csv',row.names=F)
+talk_category <- function(x){
+  talks %>% filter(grepl(x,related_tags))%>%mutate(tag=x)
+}
 ```
 
-## how does TED title looks like
-```{r}
+```{r topics}
+#generate a list of dataframe 
+my_data <- lapply(c('Technology', 'Culture','Science','Global issues','Design','Entertainment'), talk_category)
+#combine a list of df into one
+topics = do.call("rbind", my_data)
+#export
+write.csv(topics, 'ted_by_topics.csv',row.names=F)
+```
+
+
+## Frequent words in title
+```{r title}
 title = talks %>% 
   select(title) %>%
   mutate(talk_title = sub('.*: ', '', title))
@@ -177,9 +171,7 @@ title = talks %>%
 
 ```{r}
 parsedtxt <- spacy_parse(title$talk_title)
-```
 
-```{r}
 top_words <- parsedtxt %>% 
   filter(pos %in% c('ADJ','NOUN','VERB')) %>%
   group_by(pos, lemma) %>%
@@ -192,5 +184,22 @@ top_words <- parsedtxt %>%
   slice(1:10)
 ```
 
+## Frequent words in transcript
+
+```{r transcript}
+parsedtranscript <- spacy_parse(talks$transcript)
+
+top_words_in_transcript <- parsedtranscript %>% 
+  filter(pos %in% c('ADJ','NOUN','VERB')) %>%
+  group_by(pos, lemma) %>%
+  summarize(n = n()) %>%
+  anti_join(stop_words, by=c('lemma'='word')) %>%
+  ungroup %>%
+  filter(lemma!='-PRON-', lemma!='ne') %>%
+  group_by(pos) %>%
+  arrange(desc(n)) %>%
+  slice(1:10)
+write.csv(top_words_in_transcript,'top_words_in_transcript.csv')
+```
 
 
