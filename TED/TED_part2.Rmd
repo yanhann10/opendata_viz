@@ -74,6 +74,7 @@ return(ans)
 }
 ```
 
+## parsing occupation 
 ```{r}
 top_occupation <- ted_combine %>%
   count(speaker_occupation, sort=T) %>%
@@ -98,6 +99,8 @@ ted_combine %>%
   head(20)
 write.csv(ted_combine, 'ted_combine.csv')
 ```
+
+## brushing parcoord in plot.ly
 
 ```{r}
 library(plotly)
