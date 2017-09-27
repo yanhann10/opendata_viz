@@ -1,0 +1,146 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+library(jsonlite)
+library(stringr)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+Based on refreshed data on kaggle (till 2017)
+
+```{r}
+ted <- read_csv("~/git_repo/opendata_viz/TED/ted_new.csv")
+rating <- ted %>%
+  mutate(ratings=str_replace_all(ratings, "\'", "\""))%>%
+  select(ratings) %>% 
+  as.data.frame()
+```
+
+## json
+parse out json column that contains 14 ratings (beautiful, jaw-dropping, etc)
+
+```{r}
+parse = function(x) {
+  fromJSON(x) %>% select(name, count)%>% spread(name, count)
+}
+```
+
+
+```{r}
+list_rating <- lapply(rating$ratings, parse)
+rating_parsed <- bind_rows(list_rating)
+```
+
+## normalize
+Ken Robinson's talk is among the most 'long-winded', only because it has highest viewership. normalization is needed here. Each talk would have highest attribute to 1
+
+```{r}
+range01 <- function(x){(max(x)-min(x))}
+rating_parsed$max_rating <- do.call(pmax, rating_parsed)
+ted_scaled <- rating_parsed %>%
+   mutate_all(funs(./max_rating))
+
+ted_combine <- ted %>%
+  select(title, speaker_occupation, duration) %>%
+  cbind(ted_scaled)
+
+```
+
+## simplify occupation field
+```{r}
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+  {
+stopifnot(length(patterns) == length(replacements))
+ans = rep_len(as.character(fill), length(x))    
+empty = seq_along(x)
+
+for(i in seq_along(patterns)) {
+greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+ans[empty[greps]] = replacements[[i]]  
+empty = empty[!greps]
+}
+return(ans)
+}
+```
+
+```{r}
+top_occupation <- ted_combine %>%
+  count(speaker_occupation, sort=T) %>%
+  head(30)
+
+from = c(top_occupation$speaker_occupation,'Engineer','Futurist','Mathematician')
+to = c("Writer", "Artist/Designer","Artist/Designer","Journalist",
+  "Entrepreneur","Architect","Inventor","Psychologist","Photographer","Filmmaker",
+  "Scientist/Technologist","Writer","Economist","Educator","Scientist/Technologist",
+  "Scientist/Technologist","Philosopher","Scientist/Technologist","Scientist/Technologist",
+  "Musician", "Activist","Visionary","Scientist/Technologist", "Astronomer", "Behavioral economist","Artist/Designer", "Historian","Scientist/Technologist","Philanthropist","Writer",
+  "Scientist/Technologist","Futurist","Scientist/Technologist"
+)
+ted_combine <- ted_combine %>%
+  mutate(occupation = patternreplace(speaker_occupation, from, to)) %>%
+  mutate(occupation = ifelse(is.na(occupation),'others',occupation))
+```
+
+```{r}
+ted_combine %>%
+  count(occupation, sort=T) %>%
+  head(20)
+write.csv(ted_combine, 'ted_combine.csv')
+```
+
+```{r}
+library(plotly)
+df <- read.csv("https://raw.githubusercontent.com/bcdunbar/datasets/master/iris.csv")
+
+df %>%
+  plot_ly(type = 'parcoords',
+          line = list(color = ~species_id,
+                      colorscale = list(c(0,'red'),c(0.5,'green'),c(1,'blue'))),
+          dimensions = list(
+            list(range = c(2,4.5),
+                 label = 'Sepal Width', values = ~sepal_width),
+            list(range = c(4,8),
+                 constraintrange = c(5,6),
+                 label = 'Sepal Length', values = ~sepal_length),
+            list(range = c(0,2.5),
+                 label = 'Petal Width', values = ~petal_width),
+            list(range = c(1,7),
+                 label = 'Petal Length', values = ~petal_length)
+            )
+          )
+
+```
+```{r}
+ted_combine %>%
+  plot_ly(type = 'parcoords',
+          line = list(color = '#ff6f69'),
+          dimensions = list(
+            list(label = 'Beautiful', values = ~Beautiful),
+            list(label = 'Inspiring', values = ~Inspiring),
+            list(label = 'Fascinating', values = ~Fascinating),
+            list(label = 'Courageous', values = ~Courageous),
+            list(label = 'Funny', values = ~Funny),
+            list(label = 'Informative', values = ~Informative),
+            list(constraintrange = c(0.9,1),label = 'Ingenious', values = ~Ingenious),
+            list(label = 'Persuasive', values = ~Persuasive),
+            list(label = 'Obnoxious', values = ~Obnoxious),
+            list(label = 'Unconvincing', values = ~Unconvincing),
+            list(label = 'Confusing', values = ~Confusing),
+            list(label = 'Jaw-dropping', values = ~'Jaw-dropping'),
+            list(label = 'Longwinded', values = ~Longwinded)
+            )
+          )
+```
+
+
