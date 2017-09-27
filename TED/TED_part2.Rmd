@@ -1,3 +1,8 @@
+---
+title: "Find the Charateristics of TED Talks"
+output: html_document
+---
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
@@ -22,14 +27,16 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 Based on refreshed data on kaggle (till 2017)
 
 ```{r}
+#https://www.kaggle.com/rounakbanik/ted-talks
 ted <- read_csv("~/git_repo/opendata_viz/TED/ted_new.csv")
 rating <- ted %>%
   mutate(ratings=str_replace_all(ratings, "\'", "\""))%>%
   select(ratings) %>% 
   as.data.frame()
 ```
+# Pre-processing
 
-## json
+## Parse json
 parse out json column that contains 14 ratings (beautiful, jaw-dropping, etc)
 
 ```{r}
@@ -44,7 +51,7 @@ list_rating <- lapply(rating$ratings, parse)
 rating_parsed <- bind_rows(list_rating)
 ```
 
-## normalize
+## Normalization
 Ken Robinson's talk is among the most 'long-winded', only because it has highest viewership. normalization is needed here. Each talk would have highest attribute to 1
 
 ```{r}
@@ -59,7 +66,8 @@ ted_combine <- ted %>%
 
 ```
 
-## simplify occupation field
+## Find speakers' occupation
+group/simplify occupation field
 ```{r}
 patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
   {
@@ -76,7 +84,7 @@ return(ans)
 }
 ```
 
-## parsing occupation 
+
 ```{r}
 top_occupation <- ted_combine %>%
   count(speaker_occupation, sort=T) %>%
@@ -104,7 +112,8 @@ ted_combine %>%
 write.csv(ted_combine, 'ted_combine.csv')
 ```
 
-## brushing parcoord in plot.ly by attribute
+## Build parellel coordinates
+brushing parcoord in plot.ly by attribute
 
 ```{r}
 ted_combine %>%
@@ -128,7 +137,7 @@ ted_combine %>%
           )
 ```
 
-Showing attribute by speaker occupation is theoretically possible on discrete palette, but a bit sense here given the number of talks and diversity of speakers
+Showing attribute by speaker occupation is theoretically possible on discrete palette, but a bit dense here given the number of talks and diversity of speakers
 ```{r}
 #in plotly the line color encoding has to be numerics, not factors
 ted_combine %>%
