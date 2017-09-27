@@ -89,7 +89,7 @@ x=as.data.frame(x)
 ## Visualize
 Use UpSetR to show the freq across different combination of themes and topics
 
-```{r top10}
+```{r themeview}
 #nsets will automaticall choose n sets to plot and group other sets under 'others', whereas specifying sets by name will not plot others
 upset(x,
       #nsets=48,
@@ -133,7 +133,7 @@ y[is.na(y)] <- 0
 y=as.data.frame(y)
 ```
 
-```{r}
+```{r topicview}
 upset(y,
       #nsets=20,
       sets = top_tags$related_tags, 
@@ -155,8 +155,10 @@ talk_category <- function(x){
 ```{r topics}
 #generate a list of dataframe 
 my_data <- lapply(c('Technology', 'Culture','Science','Global issues','Design','Entertainment'), talk_category)
+
 #combine a list of df into one
 topics = do.call("rbind", my_data)
+
 #export
 write.csv(topics, 'ted_by_topics.csv',row.names=F)
 ```
