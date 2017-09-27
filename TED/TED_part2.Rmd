@@ -5,6 +5,8 @@ library(RColorBrewer)
 library(plotly) #contain hex to RGB conversion
 library(jsonlite)
 library(stringr)
+#plot
+library(plotly)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -88,9 +90,11 @@ to = c("Writer", "Artist/Designer","Artist/Designer","Journalist",
   "Musician", "Activist","Visionary","Scientist/Technologist", "Astronomer", "Behavioral economist","Artist/Designer", "Historian","Scientist/Technologist","Philanthropist","Writer",
   "Scientist/Technologist","Futurist","Scientist/Technologist"
 )
+
 ted_combine <- ted_combine %>%
   mutate(occupation = patternreplace(speaker_occupation, from, to)) %>%
-  mutate(occupation = ifelse(is.na(occupation),'others',occupation))
+  mutate(occupation = ifelse(is.na(occupation),'others',occupation),
+         occupation_code = as.numeric(as.factor(occupation)))
 ```
 
 ```{r}
@@ -100,30 +104,8 @@ ted_combine %>%
 write.csv(ted_combine, 'ted_combine.csv')
 ```
 
-## brushing parcoord in plot.ly
+## brushing parcoord in plot.ly by attribute
 
-```{r}
-library(plotly)
-df <- read.csv("https://raw.githubusercontent.com/bcdunbar/datasets/master/iris.csv")
-
-df %>%
-  plot_ly(type = 'parcoords',
-          line = list(color = ~species_id,
-                      colorscale = list(c(0,'red'),c(0.5,'green'),c(1,'blue'))),
-          dimensions = list(
-            list(range = c(2,4.5),
-                 label = 'Sepal Width', values = ~sepal_width),
-            list(range = c(4,8),
-                 constraintrange = c(5,6),
-                 label = 'Sepal Length', values = ~sepal_length),
-            list(range = c(0,2.5),
-                 label = 'Petal Width', values = ~petal_width),
-            list(range = c(1,7),
-                 label = 'Petal Length', values = ~petal_length)
-            )
-          )
-
-```
 ```{r}
 ted_combine %>%
   plot_ly(type = 'parcoords',
@@ -146,4 +128,32 @@ ted_combine %>%
           )
 ```
 
+Showing attribute by speaker occupation is theoretically possible on discrete palette, but a bit sense here given the number of talks and diversity of speakers
+```{r}
+#in plotly the line color encoding has to be numerics, not factors
+ted_combine %>%
+plot_ly(type = 'parcoords',
+          #line = list(color = ~occupation_code,
+          #            colorscale = list(c(1,'red'),c(2,'green'),c(3,'blue'))),
+           line = list(color = ~occupation_code,
+                      colorscale = 'jet'
+                     ),
+          dimensions = list(
+            list(constraintrange = c(0.9,1),label = 'Beautiful', values = ~Beautiful),
+            list(label = 'Inspiring', values = ~Inspiring),
+            list(label = 'Fascinating', values = ~Fascinating),
+            list(label = 'Courageous', values = ~Courageous),
+            list(label = 'Funny', values = ~Funny),
+            list(label = 'Informative', values = ~Informative),
+            list(label = 'Ingenious', values = ~Ingenious),
+            list(label = 'Persuasive', values = ~Persuasive),
+            list(label = 'Obnoxious', values = ~Obnoxious),
+            list(label = 'Unconvincing', values = ~Unconvincing),
+            list(label = 'Confusing', values = ~Confusing),
+            list(label = 'Jaw-dropping', values = ~'Jaw-dropping'),
+            list(label = 'Longwinded', values = ~Longwinded)
+            )
+          )
+
+```
 
