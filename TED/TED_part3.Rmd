@@ -59,9 +59,9 @@ top_occupation <- ted %>%
 
 from = c(top_occupation$speaker_occupation,
          'Engineer','Futurist','Mathematician')
-to = c("Writer", "Artist/Designer","Artist/Designer","Journalist",
+to = c("writer", "Artist/Designer","Artist/Designer","Journalist",
   "Entrepreneur","Architect","Inventor","Psychologist","Photographer","Filmmaker",
-  "Scientist/Technologist","Writer","Economist","Educator","Scientist/Technologist",
+  "Scientist/Technologist","writer","Economist","Educator","Scientist/Technologist",
   "Scientist/Technologist","Philosopher","Scientist/Technologist","Scientist/Technologist",
   "Musician", "Activist","Visionary","scientist/technologist", "Astronomer", "Behavioral economist","artist/designer", "Historian","scientist/technologist","Philanthropist","writer",
   "scientist/technologist","Futurist","scientist/technologist"
