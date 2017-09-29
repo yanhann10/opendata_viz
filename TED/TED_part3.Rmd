@@ -1,0 +1,127 @@
+---
+title: "Occupation of TED Speakers"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+library(jsonlite)
+library(stringr)
+#plot
+library(igraph)
+library(ggraph)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+Based on refreshed data on kaggle (till 2017)
+
+```{r}
+#https://www.kaggle.com/rounakbanik/ted-talks
+ted <- read_csv("~/git_repo/opendata_viz/TED/ted_new.csv")
+rating <- ted %>%
+  mutate(ratings=str_replace_all(ratings, "\'", "\""))%>%
+  select(ratings) %>% 
+  as.data.frame()
+```
+# Pre-processing
+Split speaker occupation by /or,or;
+
+```{r}
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+  {
+stopifnot(length(patterns) == length(replacements))
+ans = rep_len(as.character(fill), length(x))    
+empty = seq_along(x)
+
+for(i in seq_along(patterns)) {
+greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+ans[empty[greps]] = replacements[[i]]  
+empty = empty[!greps]
+}
+return(ans)
+}
+
+top_occupation <- ted %>%
+  count(speaker_occupation, sort=T) %>%
+  head(30)
+
+from = c(top_occupation$speaker_occupation,
+         'Engineer','Futurist','Mathematician')
+to = c("Writer", "Artist/Designer","Artist/Designer","Journalist",
+  "Entrepreneur","Architect","Inventor","Psychologist","Photographer","Filmmaker",
+  "Scientist/Technologist","Writer","Economist","Educator","Scientist/Technologist",
+  "Scientist/Technologist","Philosopher","Scientist/Technologist","Scientist/Technologist",
+  "Musician", "Activist","Visionary","scientist/technologist", "Astronomer", "Behavioral economist","artist/designer", "Historian","scientist/technologist","Philanthropist","writer",
+  "scientist/technologist","Futurist","scientist/technologist"
+)
+```
+
+```{r}
+occupation <- ted%>%
+  select(speaker_occupation, name, views) %>% 
+  mutate(occupation=strsplit(speaker_occupation, ",|;|/")) %>% 
+  unnest(occupation)%>%
+  mutate(occupation = trimws(tolower(occupation))) %>%
+  mutate(occupation = ifelse(grepl('co-founder|founder|ceo', occupation ),'entrepreneur',occupation)) %>%
+  mutate(occupation2 = patternreplace(occupation, from, to)) %>%
+  mutate(occupation2 = ifelse(is.na(occupation2), occupation,  occupation2))
+  
+```
+
+
+```{r}
+co_occur = sqldf("SELECT a.occupation2 a, b.occupation2 b, COUNT(*) cnt
+FROM  occupation a 
+JOIN occupation b 
+ON b.name = a.name AND b.occupation2 > a.occupation2
+GROUP BY a.occupation2, b.occupation2")
+
+g <- co_occur %>% 
+  graph_from_data_frame() 
+
+V(g)$Popularity <- degree(g, mode = 'in')
+V(g)$name
+
+```
+
+```{r ggraph}
+
+g %>%
+  ggraph(layout = 'fr') +
+  geom_edge_link(aes(edge_alpha = cnt),edge_colour = 'white',  show.legend = FALSE) +
+  geom_node_point(color = "white",aes(size = Popularity)) +
+  geom_node_text(color = "ghostwhite", aes(label = ifelse(Popularity>6, V(g)$name,'')), size=3, repel = TRUE) +
+  theme_void() + 
+  theme(legend.position = 'None',
+        plot.background = element_rect(fill = '#300961',color='grey'),
+        plot.margin=unit(c(1,1,1,1),"cm")) + coord_equal()
+
+```
+
+#turn everyone with a creativity into stars, crop into round shape
+
+#zoom in on data visionaries (flower spoke plot)
+```{r}
+graph <- graph_from_data_frame(highschool)
+V(graph)$friends <- degree(graph, mode = 'in')
+V(graph)$friends <- ifelse(V(graph)$friends < 5, 'few', 
+                           ifelse(V(graph)$friends >= 15, 'many', 'medium'))
+ggraph(graph, layout='hive', axis = 'friends', sort.by = 'degree') + 
+    geom_edge_hive(aes(colour = factor(year), alpha = ..index..)) + 
+    geom_axis_hive(aes(colour = friends), size = 3, label = FALSE) + 
+    coord_fixed()
+```
+
+
