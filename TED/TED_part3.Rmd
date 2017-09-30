@@ -8,9 +8,10 @@ knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
 library(plotly) #contain hex to RGB conversion
-library(jsonlite)
-library(stringr)
-#plot
+#date
+library(lubridate)
+#network
+library(sqldf)
 library(igraph)
 library(ggraph)
 #theme
@@ -27,13 +28,13 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 
 Based on refreshed data on kaggle (till 2017)
 
-```{r}
+```{r echo = FALSE}
 #https://www.kaggle.com/rounakbanik/ted-talks
-ted <- read_csv("~/git_repo/opendata_viz/TED/ted_new.csv")
-rating <- ted %>%
-  mutate(ratings=str_replace_all(ratings, "\'", "\""))%>%
-  select(ratings) %>% 
-  as.data.frame()
+ted_original <- read_csv("~/git_repo/opendata_viz/TED/ted_new.csv")
+
+ted <- ted %>%
+  mutate(film_date = as.Date(as.POSIXct(film_date, origin="1970-01-01"))) %>%
+  mutate(film_year = year(film_date))
 ```
 # Pre-processing
 Split speaker occupation by /or,or;
@@ -61,8 +62,8 @@ from = c(top_occupation$speaker_occupation,
          'Engineer','Futurist','Mathematician')
 to = c("writer", "Artist/Designer","Artist/Designer","Journalist",
   "Entrepreneur","Architect","Inventor","Psychologist","Photographer","Filmmaker",
-  "Scientist/Technologist","writer","Economist","Educator","Scientist/Technologist",
-  "Scientist/Technologist","Philosopher","Scientist/Technologist","Scientist/Technologist",
+  "scientist/technologist","writer","Economist","Educator","scientist/technologist",
+  "scientist/technologist","Philosopher","scientist/technologist","scientist/technologist",
   "Musician", "Activist","Visionary","scientist/technologist", "Astronomer", "Behavioral economist","artist/designer", "Historian","scientist/technologist","Philanthropist","writer",
   "scientist/technologist","Futurist","scientist/technologist"
 )
@@ -91,8 +92,8 @@ GROUP BY a.occupation2, b.occupation2")
 g <- co_occur %>% 
   graph_from_data_frame() 
 
-V(g)$Popularity <- degree(g, mode = 'in')
-V(g)$name
+V(g)$Popularity <- degree(g)
+length(V(g)$name)
 
 ```
 
@@ -101,27 +102,21 @@ V(g)$name
 g %>%
   ggraph(layout = 'fr') +
   geom_edge_link(aes(edge_alpha = cnt),edge_colour = 'white',  show.legend = FALSE) +
+  geom_edge_density(aes(fill = 'white')) + 
   geom_node_point(color = "white",aes(size = Popularity)) +
-  geom_node_text(color = "ghostwhite", aes(label = ifelse(Popularity>6, V(g)$name,'')), size=3, repel = TRUE) +
+  geom_node_text(color = "ghostwhite", aes(label = ifelse(Popularity>=10, V(g)$name,'')), size=3, repel = TRUE) +
   theme_void() + 
   theme(legend.position = 'None',
         plot.background = element_rect(fill = '#300961',color='grey'),
-        plot.margin=unit(c(1,1,1,1),"cm")) + coord_equal()
+        plot.margin=unit(c(1.2,1.2,1.2,1.2),"cm")) + coord_equal()
 
 ```
 
+
+```{r}
+adjacent_vertices(g, 111)
+```
 #turn everyone with a creativity into stars, crop into round shape
 
 #zoom in on data visionaries (flower spoke plot)
-```{r}
-graph <- graph_from_data_frame(highschool)
-V(graph)$friends <- degree(graph, mode = 'in')
-V(graph)$friends <- ifelse(V(graph)$friends < 5, 'few', 
-                           ifelse(V(graph)$friends >= 15, 'many', 'medium'))
-ggraph(graph, layout='hive', axis = 'friends', sort.by = 'degree') + 
-    geom_edge_hive(aes(colour = factor(year), alpha = ..index..)) + 
-    geom_axis_hive(aes(colour = friends), size = 3, label = FALSE) + 
-    coord_fixed()
-```
-
 
