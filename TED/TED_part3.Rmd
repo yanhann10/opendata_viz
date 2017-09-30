@@ -34,7 +34,8 @@ ted_original <- read_csv("~/git_repo/opendata_viz/TED/ted_new.csv")
 
 ted <- ted %>%
   mutate(film_date = as.Date(as.POSIXct(film_date, origin="1970-01-01"))) %>%
-  mutate(film_year = year(film_date))
+  mutate(film_year = year(film_date)) %>%
+  mutate(year = ifelse(film_year<=2008,'<2008',film_year)) 
 ```
 # Pre-processing
 Split speaker occupation by /or,or;
@@ -60,18 +61,18 @@ top_occupation <- ted %>%
 
 from = c(top_occupation$speaker_occupation,
          'Engineer','Futurist','Mathematician')
-to = c("writer", "Artist/Designer","Artist/Designer","Journalist",
-  "Entrepreneur","Architect","Inventor","Psychologist","Photographer","Filmmaker",
-  "scientist/technologist","writer","Economist","Educator","scientist/technologist",
-  "scientist/technologist","Philosopher","scientist/technologist","scientist/technologist",
-  "Musician", "Activist","Visionary","scientist/technologist", "Astronomer", "Behavioral economist","artist/designer", "Historian","scientist/technologist","Philanthropist","writer",
-  "scientist/technologist","Futurist","scientist/technologist"
+to = c("writer", "artist/designer","artist/designer","journalist",
+  "entrepreneur","architect","inventor","psychologist","photographer","filmmaker",
+  "scientist/technologist","writer","economist","educator","scientist/technologist",
+  "scientist/technologist","philosopher","scientist/technologist","scientist/technologist",
+  "musician", "activist","visionary","scientist/technologist", "astronomer", "behavioral economist","artist/designer", "historian","scientist/technologist","philanthropist","writer",
+  "scientist/technologist","futurist","scientist/technologist"
 )
 ```
 
 ```{r}
 occupation <- ted%>%
-  select(speaker_occupation, name, views) %>% 
+  select(speaker_occupation, name, views, year) %>% 
   mutate(occupation=strsplit(speaker_occupation, ",|;|/")) %>% 
   unnest(occupation)%>%
   mutate(occupation = trimws(tolower(occupation))) %>%
@@ -94,8 +95,9 @@ g <- co_occur %>%
 
 V(g)$Popularity <- degree(g)
 length(V(g)$name)
-
+E(g)$year <- as.character(E(g)$year)
 ```
+## Speakers wearing multiple hats
 
 ```{r ggraph}
 
@@ -112,11 +114,64 @@ g %>%
 
 ```
 
+## Find connected occupations
+zoom in on data visionaries (flower spoke plot)
 
 ```{r}
 adjacent_vertices(g, 111)
 ```
-#turn everyone with a creativity into stars, crop into round shape
+## Zoom in to occupations linked to more than one other occupations
+```{r}
+# distribution of degree centrality
+hist(V(g)$Popularity)
+mean(V(g)$Popularity)
+V(g)[V(g)$Popularity>20]
 
-#zoom in on data visionaries (flower spoke plot)
+#refer a node by its idx
+E(g) [ from(4) ]
+
+#refer a node by its name
+idx <- match("scientist/technologist", V(g_sub)$name)
+E(g_sub) [ from(idx) ]
+E(g_sub) [ to(idx) ]
+
+#filter a node by degree centrality
+E(g)[inc(V(g)$Popularity>20)]
+```
+Filter for high degree centrality nodes and their edges
+```{r}
+g_sub=subgraph.edges(g, E(g)[inc(V(g)$Popularity>20)]) 
+
+g_sub%>%
+  ggraph(layout = 'fr') +
+  geom_edge_link(edge_colour = 'white',  show.legend = FALSE) +
+  geom_edge_density(aes(fill = 'white')) + 
+  geom_node_point(color = "white", size=5) +
+  geom_node_text(color = "ghostwhite", aes(label = ifelse(Popularity>=2&Popularity<20, V(g_sub)$name,'')), size=2, repel = TRUE) +
+  geom_node_text(color = "white", aes(label = ifelse(Popularity>=20, V(g_sub)$name,'')), size=3, fontface='bold', repel = TRUE) +
+  theme_void() + 
+  theme(legend.position = 'None',
+        plot.background = element_rect(fill = '#300961',color='grey'),
+        plot.margin=unit(c(1.2,1.2,1.2,1.2),"cm")) + coord_equal()
+```
+
+```{r}
+g_multi %>%
+  ggraph(layout = 'fr') +
+  geom_edge_link(aes(edge_alpha = cnt),edge_colour = 'white',  show.legend = FALSE) +
+  geom_edge_density(aes(fill = 'white')) + 
+  geom_node_point(color = "white",aes(size = Popularity)) +
+  geom_node_text(color = "ghostwhite", aes(label = ifelse(Popularity>=10, V(g)$name,'')), size=3, repel = TRUE) +
+  facet_edges(~year, nrow = 5) +
+  theme_void() + 
+  theme(legend.position = 'None',
+        plot.background = element_rect(fill = '#300961',color='grey'),
+        plot.margin=unit(c(1.2,1.2,1.2,1.2),"cm")) + coord_equal()
+```
+
+
+
+
+turn everyone with a creativity into stars
+
 
