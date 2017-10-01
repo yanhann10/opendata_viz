@@ -1,5 +1,5 @@
 ---
-title: "TED"
+title: "The complete guide to superfluous holidays"
 output: html_document
 ---
 
@@ -26,8 +26,8 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 
 ```
 
-## Load data
-
+## Scrap
+scrap a list of national and global holidays
 ```{r fun}
 scrap_event <- function(i) {
   url <- paste0("https://nationaltoday.com/topic/", i,"-holidays/")
@@ -43,7 +43,6 @@ scrap_event <- function(i) {
 
   return(df)
 }
-
 ```
 
 ```{r scrap}
@@ -54,7 +53,7 @@ menu = c('activity','career','cause','drinking','environmental',
 
 all_event <- menu %>%
   map_dfr(scrap_event)
-
+#There are duplicates such as Remembrance Day is both historical and activity.
 ```
 
 remove regular public holidays like NYE
@@ -90,8 +89,8 @@ all_event_world <- all_event%>%
 write.csv(all_event_world, 'all_event_world.csv')
 ```
 
-They are duplicates such as Remembrance Day is both historical and activity.
-
+## visualize
+calendar heatmap
 ```{r heat}
 library(lattice)
 library(chron)
@@ -106,7 +105,7 @@ calendarHeat(all_event_smry$day1, all_event_smry$n, color="cust_color")
 ```
 84% of a year is marked as National/Interanational day of something!
 
-#deal with days with multiple events separately
+collapse days with multiple events
 ```{r}
 
 all_event_national_multi <- data.frame(
