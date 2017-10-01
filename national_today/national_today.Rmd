@@ -1,0 +1,123 @@
+---
+title: "TED"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#scraping
+library(rvest)
+#text
+library(tidytext)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r fun}
+scrap_event <- function(i) {
+  url <- paste0("https://nationaltoday.com/topic/", i,"-holidays/")
+  page <- read_html(url)
+
+  event <- page %>%
+    html_nodes(".pt-cv-title") %>%
+    html_text() %>%
+    as.data.frame() 
+     
+  df = data.frame(event=event$., type=i) %>%
+    separate(event, c('event','day'), sep='–')
+
+  return(df)
+}
+
+```
+
+```{r scrap}
+menu = c('activity','career','cause','drinking','environmental',
+         'ethnic','family','fashion','food','health','historical',
+         'pet','pop-culture','relationship','shopping','technology')
+
+
+all_event <- menu %>%
+  map_dfr(scrap_event)
+
+```
+
+remove regular public holidays like NYE
+```{r}
+holiday = c('Chinese New Year','Independence Day','Valentine’s Day','thanksgiving','Boxing Day','easter','New Year’s Eve','New Year’s Day',
+            'Remembrance Day')
+all_event = all_event %>%
+  filter(!grepl(paste(holiday,collapse='|'), event, ignore.case=T))
+```
+
+
+
+
+```{r EDA}
+all_event <- all_event%>%
+  mutate(day1=ymd(paste0('2017 ',day)))%>%
+  na.omit() 
+
+all_event_national <- all_event%>%
+  filter(grepl('National',event))%>%
+  mutate(trigger= trimws(gsub("National\\s*|’s|’ |Day.*", "", event)))
+
+#for timeline storytelling
+# national <- all_event_national
+# colnames(national)<-c('event','day','category','start_date','content_text')
+write.csv(national, 'national.csv')
+
+#two format: international party day; International Day of the Seafarer
+all_event_world <- all_event%>%
+  filter(grepl('World|International|Global',event))%>%
+  mutate(trigger= trimws(gsub("World|International|Global\\s*|'s*|\\sDay.*", "", event)))
+
+write.csv(all_event_world, 'all_event_world.csv')
+```
+
+They are duplicates such as Remembrance Day is both historical and activity.
+
+```{r heat}
+library(lattice)
+library(chron)
+all_event_smry <- all_event%>%
+  count(day1)
+
+source("http://blog.revolutionanalytics.com/downloads/calendarHeat.R")
+# Plot as calendar heatmap
+cust_color <- c("#ffed8f", "#a7d46f", "#359768", "#3c3352") 
+calendarHeat(all_event_smry$day1, all_event_smry$n, color="cust_color")
+300/365
+```
+84% of a year is marked as National/Interanational day of something!
+
+#deal with days with multiple events separately
+```{r}
+
+all_event_national_multi <- data.frame(
+  event='multi', 
+  day='',
+  type='multi',
+  day1=filter(all_event_smry, n!=1)$day1,trigger='',n='')
+
+all_event_national_uno <- all_event_national %>%
+  inner_join(filter(all_event_smry, n==1)) %>% 
+  rbind(all_event_national_multi)
+
+write.csv(all_event_national_uno,'all_event_national.csv')
+```
