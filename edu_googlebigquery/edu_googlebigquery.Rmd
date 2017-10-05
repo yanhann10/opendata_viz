@@ -1,0 +1,95 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#text
+library(tidytext)
+library(spacyr)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r input}
+library(bigrquery)
+options("httr_oob_default" = TRUE)
+project <- "gephiforia"
+sql <- "#standardSQL
+SELECT
+  e.*, c.region
+FROM
+  `bigquery-public-data.world_bank_intl_education.international_education` AS e 
+INNER JOIN (select country_code, region from `bigquery-public-data.world_bank_intl_education.country_summary`
+) AS c 
+ON e.country_code=c.country_code
+WHERE
+  indicator_name like '%expenditure on education%'
+  AND indicator_name not like '%lower secondary%'
+  AND indicator_name not like '%upper secondary%'
+  AND indicator_name not like 'GDP%'
+  AND year >= 2008
+"
+
+# Execute the query and store the result
+df <- query_exec(sql, project = project, use_legacy_sql = FALSE)
+```
+filter out countries with less than 5 years of data in last 10 years or all category add up to a value less than 80% in a year
+
+```{r pre_process}
+
+df_check = df %>% 
+  group_by(country_name, year) %>% 
+  summarize(m=n_distinct(indicator_name),
+            sum_value = sum(value)) 
+
+df_check2 = df %>% 
+  group_by(country_name) %>% 
+  summarize(n=n_distinct(year)) %>% filter(n<5) %>% 
+  select(country_name)%>%unique()
+
+incomplete_date <- df_check%>% filter(sum_value<80) %>% 
+  select(country_name)%>%unique() %>% as.data.frame()
+
+cntries_missing_data <- incomplete_date %>% rbind(df_check2)%>% 
+  select(country_name)%>%unique() %>% as.data.frame()
+```
+
+## Data visualization
+
+
+first pass: many countries with incomplete data, further cleaning needed
+```{r EDA}
+df  %>% 
+  anti_join(cntries_missing_data) %>%
+  ggplot(aes(year, value, fill=indicator_name)) + geom_area() + 
+  facet_wrap(~country_name) + my_theme()
+
+```
+
+group eduction other than primary/sec/ter into 'others' and make sure 'others' didn't result in total sum up to be more than 100
+
+```{r modelling}
+
+
+```
+
+## Takeaways
