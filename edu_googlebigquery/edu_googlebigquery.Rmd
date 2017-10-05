@@ -22,7 +22,7 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
     plot.title = element_text(face="bold", size=16),
     axis.text = element_text(face="bold"),
     plot.background = element_rect(fill = 'ghostwhite',color='white'),
-    legend.position = 'None', legend.title = element_blank())
+    legend.position = 'bottom', legend.title = element_blank())
 }
 
 ```
@@ -78,18 +78,60 @@ cntries_missing_data <- incomplete_date %>% rbind(df_check2)%>%
 
 first pass: many countries with incomplete data, further cleaning needed
 ```{r EDA}
-df  %>% 
-  anti_join(cntries_missing_data) %>%
-  ggplot(aes(year, value, fill=indicator_name)) + geom_area() + 
-  facet_wrap(~country_name) + my_theme()
+df_clean <- df%>% 
+  filter(!grepl("Government expenditure on education", indicator_name))%>%
+  anti_join(cntries_missing_data) 
+df_clean%>%
+  ggplot(aes(year, value, fill=indicator_name)) + 
+  geom_area() + 
+  facet_wrap(~country_name) + 
+  my_theme()
 
 ```
 
 group eduction other than primary/sec/ter into 'others' and make sure 'others' didn't result in total sum up to be more than 100
 
-```{r modelling}
+```{r clean}
+#|  as| tertiary as
+df_clean <- df_clean %>% 
+  mutate(indicator_group = ifelse(grepl(" primary as", indicator_name),
+                                        "primary",
+                           ifelse(grepl(" secondary as",indicator_name),
+                                        "secondary",
+                           ifelse(grepl(" tertiary as",indicator_name),
+                                        "tertiary",
+                                        'others')))) %>%
+  group_by(country_name, year, indicator_group) %>%
+  summarize(value = sum(value))
+  
+table(df_clean$indicator_group)
+```
+Find those over 100
+```{r}
+df_over <- df_clean %>%
+  group_by(country_name, year) %>%
+  summarize(value = sum(value)) %>%
+  filter(value>100.01) %>%
+  mutate(extra = value-100, indicator_group='others')
+
+```
+
+```{r}
+df_modified <- df_clean %>%
+  left_join(df_over, by=c('indicator_group', 'country_name', 'year')) %>%
+  mutate(value = value.x-extra)
+```
 
 
+```{r}
+MyColour <- c("#FFD35C","#FF8201","#EA3D70","#02B5A0")
+df_clean%>%
+  ggplot(aes(year, value, fill=indicator_group)) + 
+  geom_area() + 
+  facet_wrap(~country_name)  +  
+  my_theme() +
+  scale_fill_manual(values = MyColour) + 
+  labs(title='Government expenditure on education by level', caption="Source: World Bank 2008-2014" )
 ```
 
 ## Takeaways
