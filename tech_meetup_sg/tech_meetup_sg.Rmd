@@ -9,6 +9,8 @@ library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
 library(plotly) #contain hex to RGB conversion
 library(data.table)
+library(viridis)
+library(ggrepel)
 #date
 library(lubridate)
 #machinelearning
@@ -19,9 +21,9 @@ library(jsonlite)
 library(tidytext)
 library(spacyr)
 #theme
-my_theme <- function(base_size = 12, base_family = "Helvetica"){
+my_theme <- function(base_size = 10, base_family = "Helvetica"){
     theme_minimal() +
-    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    theme(
     plot.title = element_text(face="bold", size=16),
     axis.text = element_text(face="bold"),
     plot.background = element_rect(fill = 'ghostwhite',color='white'),
@@ -32,6 +34,7 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 
 Using Singapore tech meetup data curated by webuild.sg, we seek to answer the following questions:
 
+* how do the meetup groups compare to each other
 * what's the RSVP distribution by meetup group/hour/topic/title/location/platform/title of speakers/target audience
 * infer how to run a successful meetup
 
@@ -64,24 +67,102 @@ for (i in 1:370) {
   mylist[[i]] <- tryCatch(fromJSON(files[i]) %>% as.data.frame(),
                           error=function(e){return(NA %>% as.data.frame())})
 }
-df <-rbindlist(mylist, fill=TRUE) %>% filter(!is.na(meta.total_events))
-write.csv(df,'tech_meetup_sg.csv')
+df <-rbindlist(mylist, fill=TRUE) 
+
+#make colnames shorter
+names(df) <- gsub('^events.?','',names(df))
+df <- df %>% filter(!is.na(meta.total_events)) %>%
+  mutate(start_time = ymd_hms(start_time),
+         end_time = ymd_hms(end_time),
+         hour = hour(start_time),
+         wday = wday(start_time))
+
+write.csv(df,'tech_meetup_sg.csv', row.names = FALSE)
 ```
 
-## Data visualization
-
-
-
-```{r EDA}
-
-
+```{r}
+df_group <- df %>% count(group_name, sort=T) %>% filter(n>=6)
 ```
 
-## Analysis
-
-```{r modelling}
 
 
+## EDA
+focus on the groups with more than 6 events last year. Among them most groups fall into 6-10 events and 50-100 RSVPs.
+```{r}
+df_smry <- df %>%
+  group_by(group_name) %>%
+  summarize(num_events=n(), median_rsvp = median(rsvp_count)) %>%
+  mutate(num_events_bkt = cut_interval(num_events, length=10),
+         median_rsvp_bkt = cut_interval(median_rsvp, length=50))
+
+df_smry_bkt <- df_smry %>%
+  inner_join(df_group, by = "group_name") %>%
+  group_by(num_events_bkt, median_rsvp_bkt) %>%
+  count(n = n())
+
+sample<- df_smry %>% filter(num_events<10,num_events>6, median_rsvp<=25)
+df_smry %>%
+  inner_join(df_group, by = "group_name") %>%
+  ggplot(aes(num_events, median_rsvp, col=median_rsvp))+
+  geom_point() + 
+  geom_text(aes(label=ifelse(num_events>=30|median_rsvp>=100, group_name,"")),size=3,  hjust=-0.03) +
+  scale_colour_gradient(low = "skyblue",high = "purple")+
+  my_theme() + 
+  labs(title = 'Tech Meetups in Singapore', subtitle = 'Number of events hosted and median RSVP on Meetup, Facebook or Eventbrite during 2016 Oct - 2017 Oct') 
 ```
+
+
+Now let's zoom out to 173 tech meetup groups with RSVP only. Sadly most meetup groups didn't sustain - they had <5 events with <25 rsvps.
+
+```{r heatmap}
+df_smry %>% na.omit()  %>%
+  count(num_events_bkt, median_rsvp_bkt) %>%
+  ggplot(aes(num_events_bkt, median_rsvp_bkt)) + geom_tile(aes(fill=n)) + 
+  scale_fill_gradient(low = "#ffe1e1",high = "#ffb7b7") + 
+  my_theme()
+```
+
+How do different factors affect RSVP
+```{r}
+df_features <- df(hour, wday, platform, )
+```
+
+Frequent words in titles
+
+```{r}
+df %>% 
+  filter(!is.na(name)) %>%
+  select(name) %>%
+  unnest_tokens(word, name) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE)
+```
+#sentence cloud??
+keys word and their associated words
+
+Introduction to ...?
+```{r}
+df_intro <- df %>% 
+  select(name, group_name, description, location) %>%
+  filter(grepl("Intro", name))
+```
+
+
+#to-do: location: need to bin coordinates in East/W/N/S/Central
+
+## Modeling
+
+So how to run a successful meeting? In my hypothesis, the RSVPs are related with:
+
+1. user base (how many people have signed up for the group, a.k.a how good the marketing is). However this requires an additional scrap of 3 websites on membership counts so we will leave it for now.
+2. convenience of the event (central location, good timing after work)
+3. value of the event (i.e. catchy topic, hot technology, prestigious speaker)
+4. others (i.e. free pizza and beer)
+
+There would be other factors affecting the actual turnout (i.e. weather of the day) which isn't our focus here.
+
+
+So meanwhile we can use features like timing, weekday, location, channel (fb/meetup/eventbrite), keywords (i.e. contain 'introduction', or 'data science')
+
 
 ## Takeaways
