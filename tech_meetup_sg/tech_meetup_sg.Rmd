@@ -1,0 +1,87 @@
+---
+title: "tech meetup"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+library(data.table)
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#json
+library(jsonlite)
+#text
+library(tidytext)
+library(spacyr)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+Using Singapore tech meetup data curated by webuild.sg, we seek to answer the following questions:
+
+* what's the RSVP distribution by meetup group/hour/topic/title/location/platform/title of speakers/target audience
+* infer how to run a successful meetup
+
+## Load data
+
+We will use past 1 year of data from Oct 2016 to 2017 based on recency and relevancy
+
+```{r input}
+#data source: https://github.com/webuildsg/data/tree/gh-pages/data/events/v1
+#setwd("/Users/hannah/git_repo/opendata_viz/tech_meetup_sg")
+df=fromJSON("Data/events_archive_2016_10_01_030109.json") %>% as.data.frame()
+```
+
+```{r jsonlist}
+#loop through files
+files <- list.files(path="data", pattern="*.json", full.names=T, recursive=FALSE)
+
+```
+
+The json file partitioned by day could contain anything from 0 to multiple events. 
+
+To handle the multiple csv row per iteration, we can use rbindlist from data.table package. 
+
+We also need to use tryCatch to handle json files with 0 event on that day.
+
+```{r}
+mylist <- list() #create an empty list
+
+for (i in 1:370) {
+  mylist[[i]] <- tryCatch(fromJSON(files[i]) %>% as.data.frame(),
+                          error=function(e){return(NA %>% as.data.frame())})
+}
+df <-rbindlist(mylist, fill=TRUE) %>% filter(!is.na(meta.total_events))
+write.csv(df,'tech_meetup_sg.csv')
+```
+
+## Data visualization
+
+
+
+```{r EDA}
+
+
+```
+
+## Analysis
+
+```{r modelling}
+
+
+```
+
+## Takeaways
