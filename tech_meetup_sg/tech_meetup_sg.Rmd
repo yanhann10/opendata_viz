@@ -19,7 +19,7 @@ library(caret)
 library(jsonlite)
 #text
 library(tidytext)
-library(spacyr)
+library(wordcloud2)
 #theme
 my_theme <- function(base_size = 10, base_family = "Helvetica"){
     theme_minimal() +
@@ -140,13 +140,32 @@ df %>%
 #sentence cloud??
 keys word and their associated words
 
+Extract topic after 'intro(duction) to' and before:/-/workshop
 Introduction to ...?
 ```{r}
 df_intro <- df %>% 
-  select(name, group_name, description, location) %>%
-  filter(grepl("Intro", name))
+  select(name) %>%
+  filter(grepl("Intro", name)) %>%
+  mutate(topic = gsub(".*Intro.* to","", name)) %>%
+  mutate(topic = gsub(" Workshop","", topic))  %>%
+  mutate(topic = gsub(" -.*","", topic)) %>%
+  mutate(topic = gsub(":.*","", topic)) %>%
+  mutate(topic = gsub("\\(PAID\\)","", topic)) %>%
+  mutate(topic = gsub("Through Pairs Trading","", topic))%>%
+  mutate(topic = gsub("Introduction","", topic)) %>%
+  mutate(topic = trimws(topic))
+
 ```
 
+```{r}
+topic <- df_intro %>% count(topic) %>%  mutate(n=1)
+  #only very few are 2 which isn't particularly meaningful to show size 
+wordcloud2(topic, size = 0.08, minRotation = -pi/12, maxRotation = pi/12,
+  rotateRatio = 1)
+
+```
+topic)
+```
 
 #to-do: location: need to bin coordinates in East/W/N/S/Central
 
