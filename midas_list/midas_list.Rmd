@@ -14,9 +14,7 @@ library(forbesListR)
 library(lubridate)
 #machinelearning
 library(caret)
-#graph
-library(igraph)
-library(ggraph)
+
 #text
 library(tidytext)
 
@@ -43,77 +41,58 @@ Question we seek to answer:
 
 
 ```{r input}
-vcs_2012_2017 <- get_years_forbes_list_data(years = 2012:2017, list_name = "Top VCs")
+#this forbes pkg conflicts with igraph package due to as_data_frame(), load igraph later
+#2012/2013 has 50-60 with missing ages whereas 2015/16 has only 1 missing
+df <- get_years_forbes_list_data(years = 2013:2017, list_name = "Top VCs")
+#alternative df <- read_csv("~/git_repo/opendata_viz/midas_list/midas_2012_2017.csv") %>% filter(year>2012)
 ```
+
+## cleaning data
+```{r}
+df <- df %>% mutate(name=ifelse(name=='Mike Maples','Mike Maples, Jr.',name))
+```
+
+There are 87 company, 172 investor and 163 notable investments listed
+
+## notable investor and deals
 
 ```{r}
-# length(unique(vcs_2012_2017$notableDeal))
-```
-
-
-```{r}
-# length(unique(vcs_2012_2017$name))
-```
-
-network between 87 company, 172 investor and 163 notable investments involving with time
-```{r EDA}
-df=vcs_2012_2017 %>% select(src=name, target=notableDeal) %>% unique()
-
-```
-
-## Analysis
-
-```{r}
-vcs_2012_2017%>%filter(is.na(age)) %$% table(year)
-```
-2012/2013 has 50-60 with missing ages whereas 2015/16 has only 1 missing
-```{r}
-g <- df %>% na.omit() %>% graph_from_data_frame()
-
-V(g)$Popularity <- degree(g)
-
-g %>%
-  ggraph(layout = "fr") +
-  geom_edge_link(show.legend = FALSE) +
-  geom_node_point(color = "purple") +
-  geom_node_text( aes(label = ifelse(Popularity>=4, V(g)$name,'')), size=3, repel = TRUE) +
-  theme_void() + 
-  theme(legend.position = 'None')
-```
-To do:
-Color VC and invested company differently
-facet by year
-```{r}
-vcs_2012_2017%>%
+df%>%
   group_by(name) %>%
   summarize(n_company = n_distinct(notableDeal)) %>%
   arrange(desc(n_company))
 ```
-```{r}
-sample = vcs_2012_2017 %>%
-  filter(name=='David Weiden')
-```
-
 
 ```{r}
-vcs_2012_2017 %>%
+df %>%
   group_by(notableDeal) %>%
   summarize(n_lister = n_distinct(name)) %>%
   arrange(desc(n_lister))
 ```
 
 
+#1. demographics
 ```{r}
-midas_2012_2017 <- read_csv("~/git_repo/opendata_viz/midas_list/midas_2012_2017.csv")
-#only 2013 onwards there's complete rank data
-df <- midas_2012_2017 %>% filter(year>2012)
+library(waffle)
+df%>%filter(year==2017)%$%table(gender)
+
+parts <- c(Female=6, Male=94)
+
+waffle(parts, rows=10, colors=c("pink", "#969696"), 
+       title="Midas List 2017", legend_pos="bottom")
+```
+```{r}
+x= df%>%
+  filter(year==2017)%$%table(country)
+
+waffle(x, rows=10, 
+       colors=c("tan", "darkcyan","blueviolet","grey50",
+                "lightseagreen","brown","slateblue4","beige","lightblue"), 
+       title="Midas List 2017", legend_pos="bottom")
 ```
 
 
-#1. demographics
-
 #2. compare the lister
-
 
 ```{r}
 yrs <-split(df,df$year)
@@ -128,31 +107,34 @@ yr2017=yrs[[5]]
 ```{r}
 status_change = function(df1,df2,df3) {
   df2 %>%
-    mutate(type = ifelse(name %in% setdiff(df2$name,df3$name), 'left',
-                             ifelse(name %in% setdiff(df2$name,df1$name), 'new',
-                                    'same')))
-}
-```
-
-```{r}
-result <- status_change(yr2013, yr2014, yr2015)
-```
-
-```{r}
-status_change = function(df1,df2,df3) {
-  df2 %>%
-    mutate(type = ifelse(name %in% setdiff(df2$name,df3$name), "left",
+    mutate(type = 
+             ifelse(name %in% setdiff(df2$name,df3$name), "left",
                            ifelse(name %in% setdiff(df2$name,df1$name), "new",
                                     'same'))) 
 }
 ```
+
+
+
+```{r}
+df17= yr2017 %>% mutate(type= ifelse(name %in% setdiff(yr2017$name,yr2016$name), "new",
+                                    'same'))
+```
+
+```{r}
+#testing
+# s=df2 %>%
+#     mutate(type = ifelse(name %in% setdiff(df2$name,df1$name), "new",
+#                                     'same'))
+```
+
 
 ```{r}
 df_change <- status_change(NULL, yr2013, yr2014) %>%
   rbind(status_change(yr2013, yr2014, yr2015))%>%
   rbind(status_change(yr2014, yr2015, yr2016))%>%
   rbind(status_change(yr2015, yr2016, yr2017))%>%
-  rbind(status_change(yr2016, yr2017, NULL))
+  rbind(df17)
 ```
 
 ```{r}
@@ -164,7 +146,6 @@ df_change <- df_change %>%
 
 ```{r}
 df_change_rank <- df_change %>%
-  #filter(type!='same') %>%
   select(year, rank, name, type, company, notableDeal, url.image, gender, country) %>%
   mutate(rank_bkt=cut_interval(rank, length=25))
 ```
@@ -174,9 +155,7 @@ df_change_rank <- df_change %>%
 write.csv(df_change_rank, 'df_change_rank.csv')
 ```
 
-```{r}
-df_left = df_change_rank %>% filter(type=='left',year=='2016')
-```
+# network
 
 ```{r}
 g <- df %>% na.omit() %>% graph_from_data_frame()
@@ -227,5 +206,18 @@ g %>%
 ```
 
 
+```{r}
+g <- df %>% na.omit() %>% graph_from_data_frame()
+
+V(g)$Popularity <- degree(g)
+
+g %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(show.legend = FALSE) +
+  geom_node_point(color = "purple") +
+  geom_node_text( aes(label = ifelse(Popularity>=4, V(g)$name,'')), size=3, repel = TRUE) +
+  theme_void() + 
+  theme(legend.position = 'None')
+```
 
 ## Takeaways
