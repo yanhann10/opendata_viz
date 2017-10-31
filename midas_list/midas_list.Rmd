@@ -22,7 +22,7 @@ library(tidytext)
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
     theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
-    plot.title = element_text(face="bold", size=16),
+    plot.title = element_text(face="bold", size=16, hjust=-.5),
     axis.text = element_text(face="bold"),
     plot.background = element_rect(fill = 'ghostwhite',color='white'),
     legend.position = 'None', legend.title = element_blank())
@@ -49,53 +49,35 @@ df <- get_years_forbes_list_data(years = 2013:2017, list_name = "Top VCs")
 
 ## cleaning data
 ```{r}
-df <- df %>% mutate(name=ifelse(name=='Mike Maples','Mike Maples, Jr.',name))
+library(lettercase)
+df <- df %>% 
+  mutate(name=ifelse(name=='Mike Maples','Mike Maples, Jr.',name)) %>% 
+  mutate(age_bkt = cut_interval(age, length = 10)) %>%
+  mutate(notableDeal = str_title_case(gsub('\\.com','',notableDeal))) %>%
+  mutate(notableDeal = ifelse(notableDeal=='KAYAK','Kayak',notableDeal)) %>%
+  mutate(notableDeal = ifelse(notableDeal=='Acerta Pharma','Acerta',notableDeal)) %>%
+  mutate(notableDeal = gsub(".*Angel.Co/\\s*|/Midas.*", "", notableDeal))
 ```
 
 There are 87 company, 172 investor and 163 notable investments listed
 
-## notable investor and deals
-
-```{r}
-df%>%
-  group_by(name) %>%
-  summarize(n_company = n_distinct(notableDeal)) %>%
-  arrange(desc(n_company))
-```
-
-```{r}
-df %>%
-  group_by(notableDeal) %>%
-  summarize(n_lister = n_distinct(name)) %>%
-  arrange(desc(n_lister))
-```
 
 
 #1. demographics
 ```{r}
-library(waffle)
-df%>%filter(year==2017)%$%table(gender)
-
-parts <- c(Female=6, Male=94)
-
-waffle(parts, rows=10, colors=c("pink", "#969696"), 
-       title="Midas List 2017", legend_pos="bottom")
+demographics <- df %>% 
+  filter(year>2013) %>% #2013 data has lots of missing biodata
+  count(age_bkt, country, gender)
+write.csv(demographics, 'demographics.csv')
 ```
-```{r}
-x= df%>%
-  filter(year==2017)%$%table(country)
 
-waffle(x, rows=10, 
-       colors=c("tan", "darkcyan","blueviolet","grey50",
-                "lightseagreen","brown","slateblue4","beige","lightblue"), 
-       title="Midas List 2017", legend_pos="bottom")
-```
 
 
 #2. compare the lister
 
 ```{r}
 yrs <-split(df,df$year)
+#yr2012=get_years_forbes_list_data(years = 2012, list_name = "Top VCs")
 yr2013=yrs[[1]]
 yr2014=yrs[[2]]
 yr2015=yrs[[3]]
@@ -139,25 +121,66 @@ df_change <- status_change(NULL, yr2013, yr2014) %>%
 
 ```{r}
 #handle first/last year no-comparables
-df_change <- df_change %>%
-  mutate(type=ifelse(year==2013,gsub("new","same",type),
-                      ifelse(year==2017,gsub("left","same",type),type)))
+# df_change <- df_change %>%
+#   mutate(type=ifelse(year==2013,gsub("new","same",type),
+#                       ifelse(year==2017,gsub("left","same",type),type)))
 ```
 
 ```{r}
 df_change_rank <- df_change %>%
   select(year, rank, name, type, company, notableDeal, url.image, gender, country) %>%
   mutate(rank_bkt=cut_interval(rank, length=25))
-```
 
-
-```{r}
 write.csv(df_change_rank, 'df_change_rank.csv')
 ```
+
+```{r}
+#avg change
+df_change_rank %>% filter(year>2013, year<2017) %$% prop.table(table(type))
+```
+
+#3. common investment
+notable investor and deals
+
+```{r}
+df%>%
+  group_by(name) %>%
+  summarize(n_company = n_distinct(notableDeal, na.rm = TRUE)) %>%
+  arrange(desc(n_company)) 
+```
+notable VC company
+```{r}
+df%>%
+  count(company, sort=T) %>% head(10) %>%
+  ggplot(aes(reorder(company, n), n)) + 
+  geom_bar(stat='identity', width = 0.6) + 
+  coord_flip() + 
+  ggtitle("VCs associated with most Midas listers 2013-2017") +
+  theme_minimal() + labs(captions='source:Forbes') + my_theme()
+```
+
+```{r}
+df%>%
+  filter(!is.na(notableDeal)) %>%
+  group_by(notableDeal) %>%
+  summarize(n_investor = n_distinct(name, na.rm = TRUE)) %>%
+  arrange(desc(n_investor)) %>%
+  head(10) %>%
+  ggplot(aes(reorder(notableDeal, n_investor), n_investor)) + 
+  geom_bar(stat='identity', width = 0.6) + 
+  coord_flip() + 
+  ggtitle("Notable Deals by Midas listers 2013-2017") +
+  theme_minimal() + labs(captions='source:Forbes') + my_theme()
+```
+
 
 # network
 
 ```{r}
+library(igraph)
+library(ggraph)
+
+plot_network <- function(df) {
 g <- df %>% na.omit() %>% graph_from_data_frame()
 
 V(g)$Popularity <- degree(g)
@@ -166,28 +189,42 @@ g %>%
   ggraph(layout = "fr") +
   geom_edge_link(show.legend = FALSE) +
   geom_node_point(color = "purple") +
-  geom_node_text( aes(label = ifelse(Popularity>=4, V(g)$name,'')), size=3, repel = TRUE) +
+  geom_node_text( aes(label = ifelse(Popularity>=2, V(g)$name,'')), size=3, repel = TRUE) +
   theme_void() + 
   theme(legend.position = 'None')
+}
 ```
 
 
-# companies invested by same midas listers
+
+#4. companies invested by same midas listers
 
 ```{r}
-co_occur = sqldf("SELECT a.occupation2 a, b.occupation2 b, COUNT(*) cnt
-FROM  occupation a 
-JOIN occupation b 
-ON b.name = a.name AND b.occupation2 > a.occupation2
-GROUP BY a.occupation2, b.occupation2")
+df_net <- df %>%
+  select(year, name, notableDeal)
+
+library(sqldf)
+co_occur = sqldf("SELECT a.notableDeal a, 
+b.notableDeal b, 
+COUNT(*) cnt
+FROM  df_net a 
+JOIN df_net b 
+ON b.name = a.name 
+  AND b.notableDeal > a.notableDeal
+GROUP BY a.notableDeal, b.notableDeal")
 
 g <- co_occur %>% 
   graph_from_data_frame() 
 
-V(g)$Popularity <- degree(g)
-length(V(g)$name)
-E(g)$year <- as.character(E(g)$year)
+#E(g)$year <- as.character(E(g)$year)
 ```
+
+```{r}
+plot_network(co_occur)
+```
+
+
+
 ## Speakers wearing multiple hats
 
 ```{r ggraph}
