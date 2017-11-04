@@ -14,7 +14,8 @@ library(forbesListR)
 library(lubridate)
 #machinelearning
 library(caret)
-
+#sql
+library(sqldf)
 #text
 library(tidytext)
 
@@ -53,7 +54,7 @@ library(lettercase)
 df <- df %>% 
   mutate(name=ifelse(name=='Mike Maples','Mike Maples, Jr.',name)) %>% 
   mutate(age_bkt = cut_interval(age, length = 10)) %>%
-  mutate(notableDeal = str_title_case(gsub('\\.com','',notableDeal))) %>%
+  mutate(notableDeal = str_title_case(gsub('[\\.|-]com','',notableDeal))) %>%
   mutate(notableDeal = ifelse(notableDeal=='KAYAK','Kayak',notableDeal)) %>%
   mutate(notableDeal = ifelse(notableDeal=='Acerta Pharma','Acerta',notableDeal)) %>%
   mutate(notableDeal = gsub(".*Angel.Co/\\s*|/Midas.*", "", notableDeal))
@@ -131,7 +132,7 @@ df_change_rank <- df_change %>%
   select(year, rank, name, type, company, notableDeal, url.image, gender, country) %>%
   mutate(rank_bkt=cut_interval(rank, length=25))
 
-write.csv(df_change_rank, 'df_change_rank.csv')
+#write.csv(df_change_rank, 'df_change_rank.csv')
 ```
 
 ```{r}
@@ -203,7 +204,7 @@ g %>%
 df_net <- df %>%
   select(year, name, notableDeal)
 
-library(sqldf)
+
 co_occur = sqldf("SELECT a.notableDeal a, 
 b.notableDeal b, 
 COUNT(*) cnt
@@ -221,6 +222,42 @@ g <- co_occur %>%
 
 ```{r}
 plot_network(co_occur)
+```
+
+## faceted graph of investor vs by year
+it's important to put source, target columns right at the front, else it may return 'At least one layer must contain all variables used for facetting' error.
+```{r}
+df_net_14 = df_net%>%filter(year>=2014) %>% mutate(year=as.factor(year))
+
+df_net_14=df_net_14[,c(2,3,1)]
+colnames(df_net_14)=c('from','to','year')
+graph <- graph_from_data_frame(df_net_14)
+
+#among 298 vertices, half vc, half deals
+V(graph)$type <- c(rep("VC",148),rep("notable deal",148))
+
+V(graph)$Popularity <- degree(graph, mode = 'in')
+
+ggraph(graph, layout = 'kk') + 
+  geom_edge_link(aes(colour = year)) + 
+  geom_node_point(aes(shape = type), color="grey40") + 
+  geom_node_text(aes(label = ifelse(Popularity>=8, V(graph)$name,'')), size=3, repel = TRUE) +
+  ggtitle('Top Investors and Their Notable Investments by Year') + theme_void()+
+  labs(color='year', caption = "Source: Forbes Midas List") +theme(plot.margin=unit(c(1,0,1,1),"cm")) 
+```
+
+
+#testbed
+
+```{r}
+co_occur = sqldf("SELECT a.notableDeal a, 
+b.notableDeal b, 
+COUNT(*) cnt
+FROM  df_net a 
+JOIN df_net b 
+ON b.name = a.name 
+  AND b.notableDeal > a.notableDeal
+GROUP BY a.notableDeal, b.notableDeal")
 ```
 
 
