@@ -39,10 +39,28 @@ scientific_migration <- read_csv("~/git_repo/opendata_viz/scientific_migration/s
 
 #replace long country names with show ones
 
-replace = function(x, to_replace, replacement){
-  ifelse(grepl(to_replace,x),replacement,x)
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+	{
+	stopifnot(length(patterns) == length(replacements))
+	ans = x  
+	empty = seq_along(x)
+	
+	for(i in seq_along(patterns)) {
+	greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+	ans[empty[greps]] = replacements[[i]]  
+	empty = empty[!greps]
+	}
+	return(ans)
 }
 
+a <- c("United Kingdom of Great Britain and Northern Ireland",
+       "United States of America",
+       ".*Venezuela.*",
+       "Iran (Islamic Republic of)",
+       ".*Taiwan.*",
+       "Russian Federation"
+       )
+b <- c("UK","US","Venezuela","Iran","Taiwan","Russia")
 
 migrated_original <- scientific_migration %>%
   filter(!is.na(earliest_country), !is.na(country_2016)) %>%
@@ -51,16 +69,8 @@ migrated_original <- scientific_migration %>%
          latest_country_nm = countrycode(country_2016, 'iso2c', 'country.name'),
          latest_continent = countrycode(country_2016, 'iso2c', 'continent'),
          phd_country_nm = countrycode(phd_country, 'iso2c', 'country.name')) %>%
-  mutate(earliest_country_nm = replace(earliest_country_nm, 'United Kingdom','UK')) %>%
-  mutate(earliest_country_nm = replace(earliest_country_nm, 'United States','US')) %>%
-  mutate(earliest_country_nm = replace(earliest_country_nm, 'Venezuela','Venezuela')) %>%
-  mutate(earliest_country_nm = replace(earliest_country_nm, 'Iran','Iran')) %>% 
-  mutate(earliest_country_nm = replace(earliest_country_nm, 'Taiwan','Taiwan')) %>% 
-  mutate(latest_country_nm = replace(latest_country_nm, 'United Kingdom','UK')) %>%
-  mutate(latest_country_nm = replace(latest_country_nm, 'United States','US')) %>%
-  mutate(latest_country_nm = replace(latest_country_nm, 'Venezuela','Venezuela')) %>%
-  mutate(latest_country_nm = replace(latest_country_nm, 'Iran','Iran')) %>%
-  mutate(latest_country_nm = replace(latest_country_nm, 'Taiwan','Taiwan')) %>%
+  mutate(earliest_country_nm = patternreplace(earliest_country_nm, a, b)) %>% 
+  mutate(latest_country_nm = patternreplace(latest_country_nm, a, b)) %>% 
   mutate(migrated = ifelse(has_migrated == "True" & earliest_country!=country_2016, 1, 0))
 
 #remove where od countries are the same
@@ -155,7 +165,7 @@ higest
 s=od%>%arrange(desc(ob_ib_ratio)) %>% head(10)
 ggplot(s) +
   geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ob_ratio/0.75), 
-             shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.9) +
+             shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.5) +
   geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ib_ratio/0.75), 
              shape=25, fill="brown", size=s$ib_ratio/0.05, alpha=0.5) + 
   my_theme() + 
