@@ -1,0 +1,178 @@
+---
+title: "scientific_migration"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#geocode
+library(countrycode)
+#text
+library(tidytext)
+#forbes
+library(forbesListR)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r input}
+scientific_migration <- read_csv("~/git_repo/opendata_viz/scientific_migration/scientific_migration.csv")
+```
+
+```{r pre_process}
+migrated_original <- scientific_migration %>%
+  filter(has_migrated == "True") %>%
+  filter(!is.na(earliest_country), !is.na(country_2016))
+
+#remove where od countries are the same
+migrated <- migrated_original  %>%
+  filter(earliest_country!=country_2016) %>%
+  mutate(earliest_country_nm = countrycode(earliest_country, 'iso2c', 'country.name'),
+         earliest_continent = countrycode(earliest_country, 'iso2c', 'continent'),
+         latest_country_nm = countrycode(country_2016, 'iso2c', 'country.name'),
+         latest_continent = countrycode(country_2016, 'iso2c', 'continent'),
+         phd_country_nm = countrycode(phd_country, 'iso2c', 'country.name')) 
+
+#replace long country names with show ones
+
+replace = function(x, to_replace, replacement){
+  ifelse(grepl(to_replace,x),replacement,x)
+}
+
+migrated <- migrated %>%
+  mutate(earliest_country_nm = replace(earliest_country_nm, 'United Kingdom','UK')) %>%
+  mutate(earliest_country_nm = replace(earliest_country_nm, 'United States','US')) %>%
+  mutate(earliest_country_nm = replace(earliest_country_nm, 'Venezuela','Venezuela')) %>%
+  mutate(earliest_country_nm = replace(earliest_country_nm, 'Iran','Iran')) %>% 
+  mutate(earliest_country_nm = replace(earliest_country_nm, 'Taiwan','Taiwan')) %>% 
+  mutate(latest_country_nm = replace(latest_country_nm, 'United Kingdom','UK')) %>%
+  mutate(latest_country_nm = replace(latest_country_nm, 'United States','US')) %>%
+  mutate(latest_country_nm = replace(latest_country_nm, 'Venezuela','Venezuela')) %>%
+  mutate(latest_country_nm = replace(latest_country_nm, 'Iran','Iran')) %>%
+  mutate(latest_country_nm = replace(latest_country_nm, 'Taiwan','Taiwan'))
+  
+```
+
+## circular network of earliest - latest continents
+```{r}
+migrated_continents <- migrated %>%
+  count(earliest_continent, latest_continent) %>% 
+  filter(!is.na(earliest_continent), !is.na(latest_continent))
+#very few records with na continent
+
+grid.col = c(Asia = "#1B9E77", Europe = "#D95F02", Africa = "#7570B3",
+             Americas = "#E7298A", Oceania = "#66A61E")
+chordDiagram(migrated_continents, 
+             directional = 1, 
+             diffHeight  = -0.04,
+             grid.col=grid.col)
+```
+
+## what % are intra-continent movement?
+
+## for those intra-continent movement, what are the countries?
+
+```{r}
+migrated_intra <- migrated %>%
+  filter(earliest_continent==latest_continent) %>%
+  count(earliest_continent, earliest_country_nm, latest_country_nm)
+```
+
+```{r functions}
+find_top_n = function(df, n) {
+  top_orig <- df %>% count(earliest_country_nm, sort=T) %>% head(n)
+  top_dest <- df %>% count(latest_country_nm, sort=T) %>% head(n)
+  top_od <- union(top_orig$earliest_country_nm, top_dest$latest_country_nm)
+  #col <- brewer.pal(length(top_od),"Dark2")
+  df <- df %>% 
+  mutate(earliest = ifelse(earliest_country_nm %in% top_od, earliest_country_nm,'others'),
+         latest = ifelse(latest_country_nm %in% top_od, latest_country_nm,'others'))
+}
+
+region_summarize = function (df, i) {
+  df %>% 
+  find_top_n(i) %>%
+  group_by(earliest, latest) %>%
+  summarize(total = sum(n))
+}
+
+chord = function (df) {
+  chordDiagram(region_summarize(df), 
+             directional = 1, 
+             diffHeight  = -0.04)
+}
+```
+
+```{r}
+migrated_intra %>% 
+  filter(earliest_continent=='Africa') %>% 
+  chord()
+```
+## Inter-continental movements on map
+
+```{r}
+migrated_inter <- migrated %>%
+  filter(earliest_continent!=latest_continent) %>%
+  count(earliest_country_nm, latest_country_nm) %>% 
+  region_summarize(10)
+write.csv(migrated_inter, 'migrated_inter.csv')
+```
+
+
+
+## phD country
+Since there are too many countries, at country level we find top 10 and group others
+origin here is the earliest country the researcher has recorded activity, which doesn't equal home country
+
+```{r}
+migrated <- migrated %>% 
+         mutate(phd_cntry_type = ifelse(phd_country_nm==earliest_country_nm, 'same as earliest',
+                                 ifelse(phd_country_nm==latest_country_nm, 'same as latest','others')))
+```
+
+what % had phd in origin country? dest country? yet another country? 
+which continent is it on?
+what % have o-d in the same region? continent?
+
+```{r}
+prop.table(table(migrated$phd_cntry_type))
+```
+49% had phd in the earliest country, 39% had it in their migrated country, 12% had it elsewhere
+
+
+```{r merrimekko}
+#make mosaic plot 
+df <- migrated %>%
+  group_by(earliest_continent, phd_cntry_type) %>%
+  summarise(count = n()) %>%
+  na.omit() %>%
+  mutate(cut.count = sum(count),
+         prop = count/sum(count)) %>%
+  ungroup()
+
+ggplot(df,
+       aes(x = earliest_continent, y = prop, width = cut.count, fill = phd_cntry_type)) +
+  geom_bar(stat = "identity", position = "fill", colour = "black") +
+  coord_flip() +
+  facet_grid(earliest_continent~., scales = "free_x", space = "free_x") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_void() + 
+  theme(strip.text.y = element_text(angle=0), legend.position = 'bottom')
+```
+
+
