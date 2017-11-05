@@ -19,11 +19,12 @@ library(forbesListR)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
-    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    theme(axis.title.x = element_blank(),
     plot.title = element_text(face="bold", size=16),
     axis.text = element_text(face="bold"),
     plot.background = element_rect(fill = 'ghostwhite',color='white'),
-    legend.position = 'None', legend.title = element_blank())
+    legend.position = 'None', legend.title = element_blank(),
+    panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 }
 
 ```
@@ -35,18 +36,6 @@ scientific_migration <- read_csv("~/git_repo/opendata_viz/scientific_migration/s
 ```
 
 ```{r pre_process}
-migrated_original <- scientific_migration %>%
-  filter(has_migrated == "True") %>%
-  filter(!is.na(earliest_country), !is.na(country_2016))
-
-#remove where od countries are the same
-migrated <- migrated_original  %>%
-  filter(earliest_country!=country_2016) %>%
-  mutate(earliest_country_nm = countrycode(earliest_country, 'iso2c', 'country.name'),
-         earliest_continent = countrycode(earliest_country, 'iso2c', 'continent'),
-         latest_country_nm = countrycode(country_2016, 'iso2c', 'country.name'),
-         latest_continent = countrycode(country_2016, 'iso2c', 'continent'),
-         phd_country_nm = countrycode(phd_country, 'iso2c', 'country.name')) 
 
 #replace long country names with show ones
 
@@ -54,7 +43,14 @@ replace = function(x, to_replace, replacement){
   ifelse(grepl(to_replace,x),replacement,x)
 }
 
-migrated <- migrated %>%
+
+migrated_original <- scientific_migration %>%
+  filter(!is.na(earliest_country), !is.na(country_2016)) %>%
+  mutate(earliest_country_nm = countrycode(earliest_country, 'iso2c', 'country.name'),
+         earliest_continent = countrycode(earliest_country, 'iso2c', 'continent'),
+         latest_country_nm = countrycode(country_2016, 'iso2c', 'country.name'),
+         latest_continent = countrycode(country_2016, 'iso2c', 'continent'),
+         phd_country_nm = countrycode(phd_country, 'iso2c', 'country.name')) %>%
   mutate(earliest_country_nm = replace(earliest_country_nm, 'United Kingdom','UK')) %>%
   mutate(earliest_country_nm = replace(earliest_country_nm, 'United States','US')) %>%
   mutate(earliest_country_nm = replace(earliest_country_nm, 'Venezuela','Venezuela')) %>%
@@ -64,8 +60,12 @@ migrated <- migrated %>%
   mutate(latest_country_nm = replace(latest_country_nm, 'United States','US')) %>%
   mutate(latest_country_nm = replace(latest_country_nm, 'Venezuela','Venezuela')) %>%
   mutate(latest_country_nm = replace(latest_country_nm, 'Iran','Iran')) %>%
-  mutate(latest_country_nm = replace(latest_country_nm, 'Taiwan','Taiwan'))
-  
+  mutate(latest_country_nm = replace(latest_country_nm, 'Taiwan','Taiwan')) %>%
+  mutate(migrated = ifelse(has_migrated == "True" & earliest_country!=country_2016, 1, 0))
+
+#remove where od countries are the same
+migrated <- migrated_original  %>%
+  filter(migrated == 1)
 ```
 
 ## circular network of earliest - latest continents
@@ -133,6 +133,49 @@ migrated_inter <- migrated %>%
 write.csv(migrated_inter, 'migrated_inter.csv')
 ```
 
+## outbound-inbound ratio,
+normalize by total researcher population 
+```{r}
+ob_ratio = migrated_original %>% 
+  group_by(earliest_country_nm) %>% 
+  summarize(ob_ratio = mean(migrated), ob=sum(migrated)) %>%
+  rename(cntry=earliest_country_nm)
+
+ib_ratio = migrated_original %>% 
+  group_by(latest_country_nm) %>% 
+  summarize(ib_ratio = mean(migrated), ib=sum(migrated))%>%
+  rename(cntry=latest_country_nm)
+
+od <- ib_ratio %>% inner_join(ob_ratio) %>%
+  mutate(ob_ib_ratio = ob/ib, total = ob+ib) %>%
+  filter(mean(total) < total) #overall movement above avg
+```
+higest
+```{r}
+s=od%>%arrange(desc(ob_ib_ratio)) %>% head(10)
+ggplot(s) +
+  geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ob_ratio/0.75), 
+             shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.9) +
+  geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ib_ratio/0.75), 
+             shape=25, fill="brown", size=s$ib_ratio/0.05, alpha=0.5) + 
+  my_theme() + 
+  labs(title='Highest outbound/inbound ratio in researcher migration',
+caption = 'Source: ORCID')
+```
+
+lowest
+```{r}
+#need better ways to adjust height
+s=od%>%arrange(desc(ob_ib_ratio)) %>% tail(10)
+ggplot(s) +
+  geom_point(aes(reorder(cntry, ob_ib_ratio), ob_ib_ratio), 
+             shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.5) +
+  geom_point(aes(reorder(cntry, ob_ib_ratio), ob_ib_ratio-s$ib_ratio/30), 
+             shape=25, fill="brown", size=s$ib_ratio/0.05, alpha=0.6) + 
+  my_theme() + 
+  labs(title='Lowest outbound/inbound ratio in researcher migration',
+caption = 'Source: ORCID')
+```
 
 
 ## phD country
@@ -155,7 +198,7 @@ prop.table(table(migrated$phd_cntry_type))
 49% had phd in the earliest country, 39% had it in their migrated country, 12% had it elsewhere
 
 
-```{r merrimekko}
+```{r marimekko}
 #make mosaic plot 
 df <- migrated %>%
   group_by(earliest_continent, phd_cntry_type) %>%
