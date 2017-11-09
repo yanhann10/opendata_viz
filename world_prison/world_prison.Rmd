@@ -1,0 +1,92 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+#library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#world prison brief
+library("prisonbrief")
+#map
+library(sf)
+library(rworldmap)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r}
+df_stats<- wpb_table(region = "All")
+#write.csv(df_stats, 'df_prison_stats.csv')
+```
+
+
+```{r}
+n <- joinCountryData2Map(df_stats, joinCode="NAME", nameJoinColumn="country")
+mapCountryData(n, nameColumnToPlot="prison_population_rate", mapTitle="World")
+```
+
+## time series of prison rate
+```{r ingest}
+x <- list()
+countries <- wpb_list()
+for(i in 1:nrow(countries)){
+  y <- try(wpb_series(country = countries$country_url[i]), silent = FALSE)
+  if(class(y) != 'try-error'){
+    x[[i]] <- y
+  } else{
+    next
+  }
+}
+X <- data.table::rbindlist(x, fill = TRUE) %>%
+  dplyr::full_join(countries, by = c("Country" = "country_url"))
+
+
+#write.csv(X,'world_prison_data.csv')
+df_ts = read.csv('world_prison_data.csv')
+
+```
+
+
+
+```{r}
+world <- st_read("ne_110m_admin_0_map_units.shp") %>% 
+  st_transform(crs = "+proj=longlat +datum=WGS84") %>% 
+  filter(!name %in% c("Fr. S. Antarctic Lands", "Antarctica"))
+
+```
+
+```{r}
+world1 <- sf::st_as_sf(map('world', plot = FALSE, fill = TRUE))
+ggplot() + geom_sf(data = world1)
+```
+```{r}
+library(rworldmap)
+```
+
+
+
+## Data visualization
+```{r}
+ggplot(world, aes(fill = prison_population_rate)) +
+        geom_sf() +
+        scale_fill_distiller(palette = "YlOrRd", trans = "reverse") +
+        theme_minimal()
+```
+
+
+## Takeaways
