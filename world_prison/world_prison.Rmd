@@ -31,62 +31,73 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 
 ```{r}
 df_stats<- wpb_table(region = "All")
-#write.csv(df_stats, 'df_prison_stats.csv')
-```
-
-
-```{r}
-n <- joinCountryData2Map(df_stats, joinCode="NAME", nameJoinColumn="country")
-mapCountryData(n, nameColumnToPlot="prison_population_rate", mapTitle="World")
-```
-
-## time series of prison rate
-```{r ingest}
-x <- list()
-countries <- wpb_list()
-for(i in 1:nrow(countries)){
-  y <- try(wpb_series(country = countries$country_url[i]), silent = FALSE)
-  if(class(y) != 'try-error'){
-    x[[i]] <- y
-  } else{
-    next
-  }
-}
-X <- data.table::rbindlist(x, fill = TRUE) %>%
-  dplyr::full_join(countries, by = c("Country" = "country_url"))
-
-
-#write.csv(X,'world_prison_data.csv')
-df_ts = read.csv('world_prison_data.csv')
-
-```
-
-
-
-```{r}
-world <- st_read("ne_110m_admin_0_map_units.shp") %>% 
-  st_transform(crs = "+proj=longlat +datum=WGS84") %>% 
-  filter(!name %in% c("Fr. S. Antarctic Lands", "Antarctica"))
-
+write.csv(df_stats, 'df_prison_stats.csv')
 ```
 
 ```{r}
-world1 <- sf::st_as_sf(map('world', plot = FALSE, fill = TRUE))
-ggplot() + geom_sf(data = world1)
+n <- joinCountryData2Map(df_stats, joinCode="ISO2", nameJoinColumn="iso_a2")
+mapCountryData(n, 
+               nameColumnToPlot="prison_population_rate", 
+               mapTitle="Prison population rate per 100,000 people")
 ```
 ```{r}
-library(rworldmap)
+barplotCountryData(n, 
+               nameColumnToPlot = "prison_population_rate", 
+               main = "Prisoner population rate  per 100K of the national population",
+               colourPalette=head(brewer.pal(10,"YlOrRd"),5),
+               na.last = NA,
+               catMethod = "quantiles",
+               numPanels = 3)
 ```
-
-
-
-## Data visualization
 ```{r}
-ggplot(world, aes(fill = prison_population_rate)) +
-        geom_sf() +
-        scale_fill_distiller(palette = "YlOrRd", trans = "reverse") +
-        theme_minimal()
+barplotCountryData(n, 
+               nameColumnToPlot = "prison-population-total", 
+               main = "Prisoner population",
+               colourPalette=head(brewer.pal(10,"Blues"),5),
+               na.last = NA,
+               catMethod = "quantiles",
+               numPanels = 3)
 ```
 
+```{r}
+mapCountryData(n, 
+               nameColumnToPlot="female-prisoners", 
+               mapTitle="female-prisoners")
+```
+```{r}
+barplotCountryData(n, 
+               nameColumnToPlot="female-prisoners", 
+               main = "Female Prisoner Ratio",
+               colourPalette=head(brewer.pal(10,"PuRd"),5),
+               na.last = NA,
+               catMethod = "quantiles",
+               numPanels = 3,
+               cex = 1)
+```
+```{r}
+mapCountryData(n, 
+               nameColumnToPlot="foreign-prisoners", 
+               mapTitle="foreign-prisoners")
+```
+```{r}
+barplotCountryData(n, 
+               nameColumnToPlot="foreign-prisoners", 
+               main = "Foreign Prisoner Ratio",
+               colourPalette=head(brewer.pal(12,"YlGnBu"),5),
+               na.last = NA,
+               catMethod = "quantiles",
+               numPanels = 3,
+               cex = 1)
+```
+```{r}
+barplotCountryData(n, 
+               nameColumnToPlot="occupancy-level", 
+               main = "Prison Occupancy Level",
+               colourPalette=head(brewer.pal(12,"YlGn"),5),
+               na.last = NA,
+               catMethod = "quantiles",
+               numPanels = 3,
+               cex = 1)
+```
+```
 
-## Takeaways
