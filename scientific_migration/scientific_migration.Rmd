@@ -14,8 +14,6 @@ library(lubridate)
 library(countrycode)
 #text
 library(tidytext)
-#forbes
-library(forbesListR)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -37,7 +35,7 @@ scientific_migration <- read_csv("~/git_repo/opendata_viz/scientific_migration/s
 
 ```{r pre_process}
 
-#replace long country names with show ones
+#replace long country names with short ones
 
 patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
 	{
@@ -80,6 +78,7 @@ migrated <- migrated_original  %>%
 
 ## circular network of earliest - latest continents
 ```{r}
+library(circlize)
 migrated_continents <- migrated %>%
   count(earliest_continent, latest_continent) %>% 
   filter(!is.na(earliest_continent), !is.na(latest_continent))
@@ -88,6 +87,7 @@ migrated_continents <- migrated %>%
 grid.col = c(Asia = "#1B9E77", Europe = "#D95F02", Africa = "#7570B3",
              Americas = "#E7298A", Oceania = "#66A61E")
 chordDiagram(migrated_continents, 
+             
              directional = 1, 
              diffHeight  = -0.04,
              grid.col=grid.col)
@@ -95,13 +95,15 @@ chordDiagram(migrated_continents,
 
 ## what % are intra-continent movement?
 
-## for those intra-continent movement, what are the countries?
+for those intra-continent movement, what are the countries?
 
 ```{r}
 migrated_intra <- migrated %>%
   filter(earliest_continent==latest_continent) %>%
   count(earliest_continent, earliest_country_nm, latest_country_nm)
 ```
+
+To avoid cluttering the chord diagram with too many countries/areas, we group non-top-10 into others
 
 ```{r functions}
 find_top_n = function(df, n) {
@@ -114,9 +116,9 @@ find_top_n = function(df, n) {
          latest = ifelse(latest_country_nm %in% top_od, latest_country_nm,'others'))
 }
 
-region_summarize = function (df, i) {
+region_summarize = function (df) {
   df %>% 
-  find_top_n(i) %>%
+  find_top_n(10) %>%
   group_by(earliest, latest) %>%
   summarize(total = sum(n))
 }
@@ -139,12 +141,18 @@ migrated_intra %>%
 migrated_inter <- migrated %>%
   filter(earliest_continent!=latest_continent) %>%
   count(earliest_country_nm, latest_country_nm) %>% 
-  region_summarize(10)
+  region_summarize()
 write.csv(migrated_inter, 'migrated_inter.csv')
 ```
 
-## outbound-inbound ratio,
-normalize by total researcher population 
+## outbound-inbound ratio
+
+To understand the inbound vs outbound, I calculated these 3 metrics: 
+
+* outbound/inbound ratio
+* % of all researchers that moved out of a country and 
+* % of all researchers that moved in.
+
 ```{r}
 ob_ratio = migrated_original %>% 
   group_by(earliest_country_nm) %>% 
@@ -160,9 +168,28 @@ od <- ib_ratio %>% inner_join(ob_ratio) %>%
   mutate(ob_ib_ratio = ob/ib, total = ob+ib) %>%
   filter(mean(total) < total) #overall movement above avg
 ```
-higest
+
+higest ratio
+```{r test}
+
+s <- od %>%
+  arrange(desc(ob_ib_ratio)) %>% head(10)
+
+ggplot(s) +
+  geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ob_ratio/0.75), 
+             shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.5) +
+  geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ib_ratio/0.75), 
+             shape=25, fill="brown", size=s$ib_ratio/0.05, alpha=0.5) + 
+  my_theme() + 
+  labs(title='Highest outbound/inbound ratio in researcher migration',
+caption = 'Source: ORCID')
+
+```
+
 ```{r}
-s=od%>%arrange(desc(ob_ib_ratio)) %>% head(10)
+s <- od %>%
+  arrange(desc(ob_ib_ratio)) %>% head(10)
+
 ggplot(s) +
   geom_point(aes(reorder(cntry, -ob_ib_ratio), ob_ib_ratio+s$ob_ratio/0.75), 
              shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.5) +
@@ -173,10 +200,12 @@ ggplot(s) +
 caption = 'Source: ORCID')
 ```
 
-lowest
+lowest ratio
 ```{r}
 #need better ways to adjust height
-s=od%>%arrange(desc(ob_ib_ratio)) %>% tail(10)
+s <- od %>%
+  arrange(desc(ob_ib_ratio)) %>% tail(10)
+
 ggplot(s) +
   geom_point(aes(reorder(cntry, ob_ib_ratio), ob_ib_ratio), 
              shape=24, fill="green", size=s$ob_ratio/0.05, alpha=0.5) +
