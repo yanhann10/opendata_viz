@@ -1,0 +1,100 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#text
+library(tidytext)
+library(spacyr)
+#forbes
+library(forbesListR)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),
+          axis.title.x = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          plot.title = element_text(face="bold", size=16),
+          axis.text.y = element_text(face="bold"),
+          axis.text.x = element_blank(),
+          plot.background = element_rect(fill = 'ghostwhite',color='white'),
+          legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r input}
+silicon_valley_diversity <- read.csv("~/git_repo/opendata_viz/silicon_valley_diversity/silicon_valley_diversity.csv", stringsAsFactors=FALSE)
+```
+
+```{r pre_process}
+df <- silicon_valley_diversity %>%
+  filter(!grepl('otal',job_category), !grepl('otal',race)) %>%
+  mutate(race_group = ifelse(grepl('ative|Two', race), 'others', race)) %>%
+  mutate(job_group = ifelse(grepl("support|worker|helper|operative", job_category), 'other support roles', job_category)) %>%
+  mutate(job_group = ifelse(grepl('Mgr', job_category), 'managers', job_group)) %>%
+  mutate(job_group = factor(job_group, levels = c('other support roles','Technicians','Professionals','managers'))) %>%
+   mutate(race_group = factor(race_group, levels = c('others','Black_or_African_American','Latino','Asian','White'))) %>%
+  mutate(count=as.integer(count))
+
+```
+
+## roles by gender (Raw count)
+
+```{r EDA}
+df_gender_role <- df%>% 
+  group_by(company, gender, job_group) %>%
+  summarize(n = sum(count)) %>%
+  mutate(n = ifelse(gender=='male',-n,n)) %>%
+  ungroup()
+```
+
+```{r gender}
+ggplot(df_gender_role, aes(x = job_group, y = n, fill = gender)) +   # Fill column
+  geom_bar(stat = "identity", width = .6) +   # draw the bars
+  geom_hline(yintercept=0, linetype=2) +
+  coord_flip() +  # Flip axes
+  labs(title="Job category vs Gender in Silicon Valley", 
+       subtitle="Left: Male | Right:Female", 
+       caption = "source: The Center for Investigative Reporting (2016)") +
+  my_theme() + 
+  scale_fill_brewer(palette = "Dark2", direction=-1) +
+  facet_wrap(~company, scales="free_x")
+  #+scale_y_continuous(breaks = brks,  labels = lbls) 
+```
+
+```{r race}
+df%>% 
+  group_by(company, gender, race_group) %>%
+  summarize(n = sum(count)) %>%
+  mutate(n = ifelse(gender=='male',-n,n))  %>%
+ggplot(aes(x = race_group, y = n, fill = gender)) +   # Fill column
+  geom_bar(stat = "identity", width = .6) +   # draw the bars
+  geom_hline(yintercept=0, linetype=2) +
+  coord_flip() +  # Flip axes
+  labs(title="Race vs gender in Silicon Valley", 
+       subtitle="Left: Male | Right:Female", 
+       caption = "source: The Center for Investigative Reporting (2016)") +
+  my_theme() + 
+  scale_fill_brewer(palette = "Dark2", direction=-1) +
+  facet_wrap(~company, scales="free_x")
+  #+scale_y_continuous(breaks = brks,  labels = lbls) 
+```
+
+```{r}
+sessionInfo()
+#REST of the chart in tableau
+```
+
