@@ -104,8 +104,9 @@ drawImageWithText <- function(img, text, thresh, name, color = FALSE,
   imgMat <- img %>%  as.array() %>% adrop(3) %>% aperm(c(2, 1, 3))
   
   imgGSMat <- img %>% grayscale %>% as.matrix %>% t()
-  
-  fatChars <- c(LETTERS[-which(LETTERS == "I")], "m", "w", "@")
+  #simplified original code to even out letters
+  #fatChars <- c(LETTERS[-which(LETTERS == "I")], "m", "w", "@")
+  fatChars <- NA
   #skinnyChars <- c("l", "I", "i", "t", "'", "f")
   skinnyChars <- NA
   
