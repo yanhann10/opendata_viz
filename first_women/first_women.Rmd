@@ -26,10 +26,6 @@ file_name$name  <- gsub(".*images/*|(-|_)*(luisa|time|\\d).*", "",files)
 file_name$name <- gsub("(-|_)"," ", file_name$name)
 ```
 
-```{r}
-#most name matches, a few have spelling difference
-merge= file_name %>% left_join(desc %>% mutate(name = tolower(name)), on = 'name')
-```
 
 
 ## scrap text related to the featured humans
@@ -63,19 +59,45 @@ desc <- page_txt %>%
 ```
 ## background and achievements
 ```{r}
-title <- desc %>%
-  select(title, descriptor, name) %>%
-  mutate(descriptor = ifelse(grepl('American|tennis',descriptor),'women',descriptor)) %>%
-  mutate(descriptor = ifelse(grepl('Muslim',descriptor),'Muslim',descriptor))
+title <- merge %>%
+  select(title, descriptor, name, age_bkt) %>%
+  mutate(descriptor = ifelse(grepl('((^-)American)|tennis',descriptor),'woman',descriptor)) %>%
+  mutate(descriptor = ifelse(grepl('Muslim',descriptor),'Muslim',descriptor)) %>%
+  arrange(age_bkt)
 write.csv(title, 'title.csv')
 ```
 
-## scrap more text from wikipedia
-```{r}
-#first paragraph bio and their age
 
+
+
+## scrap more info from wikipedia - age
+```{r}
+#make tibble and bind df
+desc$name_search=gsub(" ","_",desc$name)
+
+scrap_age <- function(i) {
+  url <- paste0("https://en.wikipedia.org/wiki/", i)
+  page <- read_html(url)
+  
+  page_txt<-page %>%
+    html_nodes(".ForceAgeToShow") %>%
+    html_text()
+  
+  return(tibble(page_txt=page_txt,
+                name=i))
+}
+age <- desc$name_search%>%
+  map_dfr(scrap_age) 
+age_bkt= age%>% mutate(age = as.numeric(gsub("\\(age\\s|\\)", "", page_txt))) %>%
+  mutate(age_bkt = cut(age, breaks=c(0,20,40,60,80,100)))
 ```
 
+```{r}
+#most name matches, a few have spelling difference
+merge= desc %>% mutate(name = tolower(name))%>% 
+  left_join( file_name, on = 'name') %>%
+  left_join(age_bkt, by = c("name_search"="name"))
+```
 
 ## convert colored photo to text collages 
 ```{r}
