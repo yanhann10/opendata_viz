@@ -1,0 +1,98 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+#date
+library(lubridate)
+#animate
+library(tweenr)
+library(gganimate)
+library(data.table)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'white',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+library(rvest)
+```
+
+## Load data
+
+```{r input}
+asia <- read_csv("~/git_repo/opendata_viz/public_holiday/asia.csv")
+colnames(asia) <- c("index", "date", "event", "country")
+asia <- asia %>% 
+  mutate(month = month(date), yday = yday(date), qtr=quarter(date)) %>%
+  #select(-index) %>%
+  mutate(country = as.factor(country), event = as.factor(event))
+```
+
+
+```{r}
+asia <- asia%>% 
+  mutate(country = as.factor(country), event = as.factor(event)) %>%
+  filter()
+
+asia1=asia %>% select(yday, event, country, month) 
+
+asia2 = asia %>%
+  group_by(country, qtr) %>%
+  mutate(yday = 90*qtr-5*row_number()) %>%
+  ungroup() %>% 
+  as.data.frame() %>% select(yday, event, country, month) 
+
+asia3 = asia %>%
+  group_by(country) %>%
+  mutate(yday = 365-5*row_number()) %>%
+  ungroup() %>% 
+  as.data.frame()%>% select(yday, event, country, month) 
+```
+
+
+```{r}
+ts=list(asia1, asia2, asia3)
+tf <- tween_states(ts, tweenlength = 2, statelength = 1, 
+                   ease = c('cubic-in-out',  
+                            'sine-in-out',  'back-out'), 
+                   nframes = 300)
+
+#cubic-in-out', 'elastic-out',  
+#                            'cubic-out', 'sine-in-out', 'sine-in-out', 
+#                            'circular-in', 'back-out'
+```
+
+
+```{r fun}
+skewer_plot <- function(i) {
+  ggplot(i) + 
+  geom_segment(aes(x=yday, xend=yday+0.8, y=country, yend=country,
+                   col=as.factor(month), frame=.frame), size=15) +
+  scale_x_reverse(breaks = c(1,31,59, 90, 120, 151, 
+                                181, 211,241, 271,302,332,365)
+                     , labels = c('Jan','Feb',"Mar", "Apr","May", "Jun", 
+                                  "Jul","Aug","Sep","Oct","Nov",'Dec','Next Year')) +
+  scale_y_discrete(position = "top") + 
+  my_theme() +
+  theme(panel.grid.minor.y = element_blank(),
+        panel.grid.major.y = element_blank()) + coord_flip()
+}
+```
+
+```{r}
+dtf <- data.table(tf) 
+
+p = skewer_plot(dtf)
+
+gganimate(p, "asia_holiday_nodrastic.gif", title_frame = F, ani.width = 400, 
+           ani.height = 400, interval = .05)
+```
+
