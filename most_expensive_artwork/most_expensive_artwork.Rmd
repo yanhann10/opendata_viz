@@ -1,0 +1,142 @@
+---
+title: ""
+output: html_document
+---
+
+## PART 1: World's most expensive paintings ever
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#scraping
+library(rvest)
+#text
+library(tidytext)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(
+    plot.title = element_text(face="bold", size=16, hjust = 0.5),
+    axis.text.y = element_text(face="bold"), axis.text.x = element_text(angle=90),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    panel.grid.minor = element_blank(),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## most expensive artwork
+
+```{r fun}
+url <- "https://en.wikipedia.org/wiki/List_of_most_expensive_paintings"
+page <- read_html(url)
+
+artprice <- page %>%
+    html_nodes(xpath='//*[@id="mw-content-text"]/div/table') %>%
+    html_table()
+
+artprice <- artprice[[1]]
+```
+
+```{r}
+top_grossing <- artprice %>%
+  mutate(price_adj = as.numeric(gsub('\\$|\\s+\\+|~','', `Adjusted price\n(in millions)`))) %>%
+  mutate(year_created = ymd(paste0(substr(gsub('c. ','',Year), 1,4),'-01-01'))) %>%
+  mutate(year_sold = ymd(substr(`Date of sale`, 9, 18))) %>%
+  mutate(artwork_age = year(year_sold) - year(year_created)) %>%
+  mutate(dealer = ifelse(grepl('Christie\'s',`Auction house`), 'Christie\'s',
+                       ifelse(grepl('Sotheby',`Auction house`), 'Sotheby\'s',
+                             'Private'))) %>%
+  mutate(artist =  gsub('attributed to','',sub('.*!', '', Artist)))
+#write.csv(top_grossing,'top_grossing.csv',row.names = F)
+```
+
+
+
+```{r}
+library(scales)
+top_grossing %>%
+  head(50) %>%
+  ggplot() +
+  geom_segment(aes(x = year_created, y = price_adj, 
+                   xend = year_sold, yend=price_adj, 
+                   colour = artist),
+               alpha=0.8, size=1) + 
+  geom_vline(xintercept=ymd('2016-01-01'), linetype="dotted", color = "grey")+
+  geom_text(aes(x = ymd('2016-01-01'), y = 0), label = "2016", size = 2) +
+  facet_grid(.~dealer) +
+  labs(title = 'World\'s most expensive paintings', 
+       x = 'From the creation of the paintings to the year it\'s last sold',
+       y = 'Price in Millions$',
+       caption = 'Source: Wikipedia') +
+  scale_x_date(breaks = date_breaks("100 years"), limits	= c(ymd('1477-06-01'),ymd('2020-01-01')), date_labels = "%Y") +
+  my_theme()
+```
+
+# top gossing artists
+```{r}
+top_grossing_artist <- top_grossing %>%
+   head(50) %>%
+   count(artist, sort=T) %>%
+   filter(n>1) %>%
+   mutate(rank = row_number())
+top_grossing_artwork <- top_grossing %>%
+  inner_join(top_grossing_artist) %>%
+  select(artist, dealer, price_adj, year_created, rank)
+```
+
+
+```{r}
+top_grossing_artwork$artist <- reorder(top_grossing_artwork$artist, -top_grossing_artwork$rank)
+```
+
+```{r}
+top_grossing_artwork %>%
+  ggplot() +
+  geom_point(aes(artist, price_adj, color=artist, size=2, alpha=0.8))+
+  labs(title = 'Artists with highest-Grossing Artworks', 
+       subtitle = 'Ranked by Number of Artworks Among Top 50 Most Expensive Paintings',
+       y = 'Price of Auctioned Artwork Unit in Millions$', x='',
+       caption = 'Source: Wikipedia') +
+  coord_flip() +
+  my_theme()
+```
+
+
+
+## PART 2: 100 top contemporary artists by auction turnover
+
+```{r}
+url1 <- "https://www.artprice.com/artprice-reports/the-contemporary-art-market-report-2017/top-500-contemporary-artists/top-500-contemporary-artists-1-to-50#"
+
+top_artist1 <- read_html(url1) %>%
+    #html_nodes(xpath='/html/body/div[2]/div[3]/div[2]/div/div[4]/div') %>%
+    html_table()
+
+top_artist1 <- top_artist1[[1]]
+
+url2 <- "https://www.artprice.com/artprice-reports/the-contemporary-art-market-report-2017/top-500-contemporary-artists/top-500-contemporary-artists-51-to-100"
+
+top_artist2 <- read_html(url2) %>%
+    #html_nodes(xpath='/html/body/div[2]/div[3]/div[2]/div/div[4]/div') %>%
+    html_table()
+
+top_artist2 <- top_artist2[[1]]
+
+top_artist <- top_artist1 %>% rbind(top_artist2) %>% filter(!grepl("artprice.com", Rank))
+```
+
+```{r}
+
+
+top_artist100 <- top_artist %>% 
+  mutate(auction_turnover = as.numeric(gsub('\\$|,','',`Auction turnover`))) %>% 
+  mutate(best_result = as.numeric(gsub('\\$|,','',`Best result`)))
+write.csv(top_artist100,'top_artist',row.names = F)
+
+```
+
