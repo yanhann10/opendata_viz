@@ -1,0 +1,90 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#text
+library(tidytext)
+library(spacyr)
+#forbes
+library(forbesListR)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r input}
+library(spacyr)
+library(cleanNLP)
+library(sotu)
+spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
+```
+
+```{r pre_process}
+library(sotu)
+df=data.frame(script=sotu_text) %>% cbind(sotu_meta)
+```
+
+
+```{r}
+first_sotu <- df %>%
+  mutate(row = 1:n()) %>%
+  group_by(president) %>%
+  slice(1) %>%
+  mutate(script = as.character(script))
+```
+
+
+```{r EDA}
+sotu <- cleanNLP::run_annotators(sotu_text, as_strings = TRUE,meta = sotu_meta)
+```
+
+## Analysis
+
+```{r}
+tidy_sotu <- first_sotu %>%
+  unnest_tokens(word, script) %>%
+  anti_join(stop_words)
+```
+```{r}
+count_sotu <-  tidy_sotu %>%
+  count(president, word) %>%
+  group_by(president) %>%
+  mutate(proportion = n / sum(n)) 
+
+spread_sotu <- count_sotu %>%
+  #filter(n>1) %>% #remove one-off words
+  select(-n) %>% 
+  spread(president, proportion)  %>% 
+  mutate(num_na = rowSums(is.na(.)))
+```
+
+```{r}
+most_used <- spread_sotu %>% filter(num_na<=5)
+most_used_melt <- most_used %>% 
+  mutate(used_the_word = 41-num_na)%>% 
+  gather(president, words, -c(word,used_the_word)) %>%
+  filter(is.na(words)) %>%
+  left_join(first_sotu) %>%
+  select(word, used_the_word, president, year)
+```
+
+## to-do: use spacyr for cleaner words; add in 2018 speech
