@@ -15,15 +15,20 @@ library(caret)
 #text
 library(tidytext)
 library(spacyr)
-#forbes
-library(forbesListR)
+#network
+library(networkD3)
+library(igraph)
+library(ggraph)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
-    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    theme(axis.title.y = element_blank(),
+          axis.title.x = element_blank(),
     plot.title = element_text(face="bold", size=16),
-    axis.text = element_text(face="bold"),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(face="bold"),
     plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    panel.grid = element_blank(),
     legend.position = 'None', legend.title = element_blank())
 }
 
@@ -39,8 +44,10 @@ spacy_initialize(python_executable = "/Users/hannah/anaconda/bin/python")
 ```
 
 ```{r pre_process}
-library(sotu)
-df=data.frame(script=sotu_text) %>% cbind(sotu_meta)
+df=data.frame(script=sotu_text) %>% 
+  cbind(sotu_meta) %>%
+  mutate(script = as.character(script))
+sotu18 <-data.frame(script=paste0(readLines("sotu.txt")))
 ```
 
 
@@ -50,11 +57,24 @@ first_sotu <- df %>%
   group_by(president) %>%
   slice(1) %>%
   mutate(script = as.character(script))
+
+first_sotu_meta <- sotu_meta %>% 
+  group_by(president) %>%
+  slice(1) %>% mutate(id = 1:n()) %>% 
+  arrange(year)
 ```
 
+```{r}
+parsedtxt <- spacy_parse(first_sotu$script)
+```
 
-```{r EDA}
-sotu <- cleanNLP::run_annotators(sotu_text, as_strings = TRUE,meta = sotu_meta)
+```{r}
+
+parsedsmry <- parsedtxt %>%
+  count(doc_id, lemma) %>%
+  mutate(id = as.numeric(sub("text", "", doc_id))) %>%
+  left_join(first_sotu_meta) %>%
+  anti_join(stop_words, by=c("lemma" = "word"))
 ```
 
 ## Analysis
@@ -63,12 +83,23 @@ sotu <- cleanNLP::run_annotators(sotu_text, as_strings = TRUE,meta = sotu_meta)
 tidy_sotu <- first_sotu %>%
   unnest_tokens(word, script) %>%
   anti_join(stop_words)
+
+tidy_sotu18 <- sotu18  %>%
+  mutate(script = as.character(script)) %>%
+  filter(!is.na(script))%>%
+  unnest_tokens(word, script) %>%
+  anti_join(stop_words)%>%
+  mutate(president = 'Donald Trump', year=2018) %>%
+  count(president, word) %>%
+  group_by(president) %>%
+  mutate(proportion = n / sum(n)) 
 ```
 ```{r}
 count_sotu <-  tidy_sotu %>%
   count(president, word) %>%
   group_by(president) %>%
-  mutate(proportion = n / sum(n)) 
+  mutate(proportion = n / sum(n)) %>%
+  rbind(tidy_sotu18)
 
 spread_sotu <- count_sotu %>%
   #filter(n>1) %>% #remove one-off words
@@ -79,12 +110,41 @@ spread_sotu <- count_sotu %>%
 
 ```{r}
 most_used <- spread_sotu %>% filter(num_na<=5)
+
+write.csv(most_used, 'most_use.csv')
+
 most_used_melt <- most_used %>% 
   mutate(used_the_word = 41-num_na)%>% 
   gather(president, words, -c(word,used_the_word)) %>%
   filter(is.na(words)) %>%
   left_join(first_sotu) %>%
   select(word, used_the_word, president, year)
+
+most_used_melt[11:14,'year']=2018
+most_used_melt[115,]=NA
 ```
 
-## to-do: use spacyr for cleaner words; add in 2018 speech
+## to-do: use spacyr for cleaner words; 
+
+## plot out the words
+```{r}
+most_used_melt_era <- most_used_melt %>% 
+  filter(year>1946) %>%
+  group_by(president) %>%
+  mutate(year_president = paste0(year, ' ', president)) %>%
+  mutate(rank = 1:n())
+
+most_used_melt_era %>%
+  ggplot(aes(str_wrap(year_president,10), rank)) +
+  geom_label(aes(label=word, fill=year), color="white") + 
+  scale_fill_viridis() +
+  my_theme() +
+  scale_y_reverse() + 
+  scale_x_discrete(position = "top") + 
+  labs(title = 'Common words not used in State of the Union speeches', caption = 'source: The 1st SOTU by each president')
+```
+
+
+
+
+
