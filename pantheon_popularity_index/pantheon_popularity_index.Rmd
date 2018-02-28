@@ -58,21 +58,20 @@ pantheon_i50 %>%
                    yend = max(article_languages)+25, 
                    xend =  birth_year),
                    color = "lightgrey", size=0.5) +
-  #geom_text(aes(x=1900, y=max(article_languages)+30)) +
-
   geom_point(data = subset(pantheon_i50, sex=='Female'),
              aes(x=birth_year, 
              y=article_languages, 
              size=historical_popularity_index/20+0.2),
              col="black") +
-    geom_point(aes(x=birth_year, 
+  geom_point(aes(x=birth_year, 
              y=article_languages, 
              col=domain, 
              size=historical_popularity_index/20),
              alpha=0.8) +
   #geom_image(aes(image=image), size=.05) +
   coord_polar() +
-  my_theme() + scale_x_continuous(breaks=seq(1200,2000,100))
+  my_theme() + 
+  scale_x_continuous(breaks=seq(1200,2000,100))
 
 ```
 
