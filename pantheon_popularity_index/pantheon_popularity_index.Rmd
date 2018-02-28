@@ -1,0 +1,79 @@
+---
+title: "pantheon_popularity_index"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) 
+library(ggimage)
+#date
+library(lubridate)
+#machinelearning
+library(caret)
+#text
+library(tidytext)
+#3d
+library(threejs)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text.y = element_blank(),
+    panel.grid = element_blank(),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+
+```{r input}
+pantheon_popularity_index <- read.csv("~/git_repo/opendata_viz/pantheon popularity index/pantheon_popularity_index.csv", stringsAsFactors=FALSE)
+```
+
+```{r}
+#to-do: fast forward time
+
+pantheon_i50 <- pantheon_popularity_index %>%
+  filter(city %in% c('Rome', 'Paris', 'New York, NY', 'London', 'Los Angeles, CA'),
+         article_languages>=50) %>%
+  mutate(birth_year = as.numeric(birth_year),
+         image = "img/Elizabeth I of England.jpg") 
+
+pantheon_i50 %>%
+  ggplot()  +
+  #historical_popularity_index/20
+  geom_segment(aes(y = 0, 
+                   x = birth_year, 
+                   yend = article_languages, 
+                   xend =  birth_year),
+                   color = "lightgrey", size=0.5) +
+  geom_segment(aes(y = max(article_languages)+20, 
+                   x = birth_year, 
+                   yend = max(article_languages)+25, 
+                   xend =  birth_year),
+                   color = "lightgrey", size=0.5) +
+  #geom_text(aes(x=1900, y=max(article_languages)+30)) +
+
+  geom_point(data = subset(pantheon_i50, sex=='Female'),
+             aes(x=birth_year, 
+             y=article_languages, 
+             size=historical_popularity_index/20+0.2),
+             col="black") +
+    geom_point(aes(x=birth_year, 
+             y=article_languages, 
+             col=domain, 
+             size=historical_popularity_index/20),
+             alpha=0.8) +
+  #geom_image(aes(image=image), size=.05) +
+  coord_polar() +
+  my_theme() + scale_x_continuous(breaks=seq(1200,2000,100))
+
+```
+
+
