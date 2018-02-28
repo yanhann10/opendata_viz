@@ -17,6 +17,9 @@ library(caret)
 library(tidytext)
 #3d
 library(threejs)
+#animate
+library(tweenr)
+library(gganimate)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -33,17 +36,38 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 ## Load data
 
 ```{r input}
-pantheon_popularity_index <- read.csv("~/git_repo/opendata_viz/pantheon popularity index/pantheon_popularity_index.csv", stringsAsFactors=FALSE)
-```
-
-```{r}
-#to-do: fast forward time
+pantheon_popularity_index <- read.csv("~/git_repo/opendata_viz/pantheon_popularity_index/pantheon_popularity_index.csv", stringsAsFactors=FALSE)
 
 pantheon_i50 <- pantheon_popularity_index %>%
-  filter(city %in% c('Rome', 'Paris', 'New York, NY', 'London', 'Los Angeles, CA'),
+  filter(city %in% c('Rome', 'Paris', 'New York'),
          article_languages>=50) %>%
-  mutate(birth_year = as.numeric(birth_year),
-         image = "img/Elizabeth I of England.jpg") 
+  mutate(birth_year = (birth_year))
+```
+
+```{r tableau}
+#calculate x, y coordinates
+pantheon_i50_rome <- pantheon_i50 %>%
+  filter(city %in% c('Rome')) %>%
+  arrange(desc(historical_popularity_index)) 
+
+pantheon_i50_rome$ID <- seq.int(nrow(pantheon_i50_rome))
+
+pantheon_i50_rome <- pantheon_i50_rome %>%
+  mutate(x = article_languages * sin(2*pi*ID/nrow(pantheon_i50_rome)),
+         y = article_languages * cos(2*pi*ID/nrow(pantheon_i50_rome)))
+
+pantheon_i50_rome[72:142,]=pantheon_i50_rome
+pantheon_i50_rome[72:142, "ID"]=seq.int(71)
+pantheon_i50_rome[72:142, "x"]=0.0
+pantheon_i50_rome[72:142, "y"]=0.0
+pantheon_i50_rome[72:142, "full_name"]="origin"
+
+write.csv(pantheon_i50_rome,'s.csv')
+```
+
+```{r fig.width=800, fig.height=200}
+#to-do: fast forward time
+#'London', 'Los Angeles','Istanbul'
 
 pantheon_i50 %>%
   ggplot()  +
@@ -58,6 +82,7 @@ pantheon_i50 %>%
                    yend = max(article_languages)+25, 
                    xend =  birth_year),
                    color = "lightgrey", size=0.5) +
+  #use marginal border to different gender
   geom_point(data = subset(pantheon_i50, sex=='Female'),
              aes(x=birth_year, 
              y=article_languages, 
@@ -70,9 +95,13 @@ pantheon_i50 %>%
              alpha=0.8) +
   #geom_image(aes(image=image), size=.05) +
   coord_polar() +
-  my_theme() + 
-  scale_x_continuous(breaks=seq(1200,2000,100))
+  theme_void() +
+  scale_x_continuous(breaks=seq(min(pantheon_i50$birth_year),max(pantheon_i50$birth_year),100)) +
+  facet_grid(.~city, scales="free")
 
 ```
+
+
+
 
 
