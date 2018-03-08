@@ -1,0 +1,62 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#machinelearning
+library(r)
+#text
+library(tidytext)
+library(spacyr)
+#forbes
+library(forbesListR)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r}
+open_data <- read.csv("~/git_repo/opendata_viz/open_data/open_data.csv", stringsAsFactors=FALSE)
+countries_scores <- read.csv("~/git_repo/opendata_viz/open_data/countries_scores.csv", stringsAsFactors=FALSE)
+```
+
+```{r}
+cntry_score <- countries_scores %>% 
+  select(Country.Name, Category, Score) 
+```
+
+
+```{r radialheatmap}
+cntry_score$var2=cntry_score$Score + 15
+y_labels = levels(cntry_score$Score)
+y_breaks = seq_along(y_labels) + 15
+
+ggplot(cntry_score, aes(x=Country.Name, y=var2, fill=Score)) +
+  geom_tile(colour="white") +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  ylim(c(0, max(cntry_score$var2) + 0.5)) +
+  scale_y_discrete(breaks=y_breaks, labels=y_labels) +
+  coord_polar(theta="x") +
+  theme(panel.background=element_blank(),
+        axis.title=element_blank(),
+        panel.grid=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks=element_blank(),
+        axis.text.y=element_text(size=5))
+```
+
