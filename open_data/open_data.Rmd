@@ -7,16 +7,10 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
+library(viridis)
 library(plotly) #contain hex to RGB conversion
-#date
-library(lubridate)
 #machinelearning
-library(r)
-#text
-library(tidytext)
-library(spacyr)
-#forbes
-library(forbesListR)
+library(countrycode)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -32,31 +26,70 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 ## Load data
 ```{r}
 open_data <- read.csv("~/git_repo/opendata_viz/open_data/open_data.csv", stringsAsFactors=FALSE)
-countries_scores <- read.csv("~/git_repo/opendata_viz/open_data/countries_scores.csv", stringsAsFactors=FALSE)
+countries_scores_df <- read.csv("~/git_repo/opendata_viz/open_data/countries_scores.csv", stringsAsFactors=FALSE)
 ```
 
 ```{r}
-cntry_score <- countries_scores %>% 
-  select(Country.Name, Category, Score) 
+cntry_score_original <- countries_scores_df %>% 
+    filter(Year == 2015) %>%
+  select(Country.Name, Category, Score) %>%
+  mutate(continent = countrycode(Country.Name, "country.name", "continent"),
+         Country.Name = gsub(', Republic of| United Republic of|, Plurinational*', '',Country.Name)) %>%
+  mutate(continent = ifelse(Country.Name %in% c('Australia', 'Kosovo'), 
+                            'APAC & Middle East', 
+                            ifelse(continent == "Asia", 
+                                   "APAC & Middle East",
+                            continent)))
+
 ```
+## sort in such a way that categories with the most value at towards outer rim
 
 
+## plot radial heatmap
 ```{r radialheatmap}
-cntry_score$var2=cntry_score$Score + 15
-y_labels = levels(cntry_score$Score)
-y_breaks = seq_along(y_labels) + 15
+list_continent = unique(cntry_score_original$continent)
+col_palette = brewer.pal(6,"Dark2")
 
+for (i in 1:length(list_continent)) {
+cntry_score <- cntry_score_original %>% 
+  filter(continent==list_continent[i]) %>% 
+  group_by(Country.Name) %>%
+  mutate(id = 1:n())
+#make a category index
+
+cntry_score$var2= cntry_score$id + 5
+y_labels = levels(cntry_score$id)
+y_breaks = seq_along(y_labels) + 5
+
+
+#make text label
+cntry_labs <- subset(cntry_score, var2==18)
+cntry_labs$ang <- seq(from=(360/nrow(cntry_labs))/1.5, to=(1.5*(360/nrow(cntry_labs)))-360, length.out=nrow(cntry_labs))+80
+
+cntry_labs$hjust <- 0
+cntry_labs$hjust[which(cntry_labs$ang < -90)] <- 1
+cntry_labs$ang[which(cntry_labs$ang < -90)] <- (180+cntry_labs$ang)[which(cntry_labs$ang < -90)]
+
+#white space come from axis
 ggplot(cntry_score, aes(x=Country.Name, y=var2, fill=Score)) +
   geom_tile(colour="white") +
-  scale_fill_gradient(low = "white", high = "steelblue") +
-  ylim(c(0, max(cntry_score$var2) + 0.5)) +
-  scale_y_discrete(breaks=y_breaks, labels=y_labels) +
+  scale_fill_gradient(low = "white", high = col_palette[i]) +
+  ylim(c(0, max(cntry_score$var2) + 3.6)) +
+  geom_text(data = cntry_labs, 
+            aes(x=Country.Name, y=18.8,
+            label=Country.Name, 
+            angle=ang, hjust=hjust
+            ), size=3) +
   coord_polar(theta="x") +
   theme(panel.background=element_blank(),
         axis.title=element_blank(),
         panel.grid=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks=element_blank(),
-        axis.text.y=element_text(size=5))
-```
+        axis.text.y=element_blank(),
+        legend.position = 'None',
+        text=element_text(family="Circular Air Light"))
 
+ggsave(paste0(list_continent[i], ".svg"))
+}
+```
