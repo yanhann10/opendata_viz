@@ -8,17 +8,20 @@ knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
 library(viridis)
-library(plotly) #contain hex to RGB conversion
+library(ggrepel) #contain hex to RGB conversion
 #machinelearning
 library(countrycode)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
-    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
-    plot.title = element_text(face="bold", size=16),
-    axis.text = element_text(face="bold"),
-    plot.background = element_rect(fill = 'ghostwhite',color='white'),
-    legend.position = 'None', legend.title = element_blank())
+    theme(axis.title.y = element_blank(),
+          axis.title.x = element_blank(),
+          plot.title = element_text(face="bold", size=16),
+          panel.grid = element_blank(),
+          plot.background = element_rect(fill = 'ghostwhite',color='white'),
+          legend.position = 'None', legend.title = element_blank(),
+          strip.text.x = element_text(size = 10, face = 'bold'),
+          plot.margin = margin(10, 10, 10, 10))
 }
 
 ```
@@ -32,9 +35,11 @@ countries_scores_df <- read.csv("~/git_repo/opendata_viz/open_data/countries_sco
 ```{r}
 cntry_score_original <- countries_scores_df %>% 
     filter(Year == 2015) %>%
-  select(Country.Name, Category, Score) %>%
-  mutate(continent = countrycode(Country.Name, "country.name", "continent"),
-         Country.Name = gsub(', Republic of| United Republic of|, Plurinational*', '',Country.Name)) %>%
+  select(Country.Name, Country.Code, Category, Score, Open.Data) %>%
+  separate(Country.Name, c("Country.Name","additional"), sep=",") %>%
+  select(-additional) %>%
+  mutate(region = countrycode(Country.Name, "country.name", "region"),
+    continent = countrycode(Country.Name, "country.name", "continent")) %>%
   mutate(continent = ifelse(Country.Name %in% c('Australia', 'Kosovo'), 
                             'APAC & Middle East', 
                             ifelse(continent == "Asia", 
@@ -48,48 +53,109 @@ cntry_score_original <- countries_scores_df %>%
 ## plot radial heatmap
 ```{r radialheatmap}
 list_continent = unique(cntry_score_original$continent)
-col_palette = brewer.pal(6,"Dark2")
+# col_palette = c("#C4D07B", "#F7CC97", "#F38C9F", "#D3D3D3")
+col_palette = c("#F5D368", "#F5A4A1", "#7AB2B3", "#93DD7C","#F56565")
 
 for (i in 1:length(list_continent)) {
-cntry_score <- cntry_score_original %>% 
-  filter(continent==list_continent[i]) %>% 
-  group_by(Country.Name) %>%
-  mutate(id = 1:n())
-#make a category index
-
-cntry_score$var2= cntry_score$id + 5
-y_labels = levels(cntry_score$id)
-y_breaks = seq_along(y_labels) + 5
-
-
-#make text label
-cntry_labs <- subset(cntry_score, var2==18)
-cntry_labs$ang <- seq(from=(360/nrow(cntry_labs))/1.5, to=(1.5*(360/nrow(cntry_labs)))-360, length.out=nrow(cntry_labs))+80
-
-cntry_labs$hjust <- 0
-cntry_labs$hjust[which(cntry_labs$ang < -90)] <- 1
-cntry_labs$ang[which(cntry_labs$ang < -90)] <- (180+cntry_labs$ang)[which(cntry_labs$ang < -90)]
-
+  cntry_score <- cntry_score_original %>% 
+    filter(continent==list_continent[i]) %>% 
+    group_by(Country.Name) %>%
+    mutate(id = 1:n())
+  #make a category index
+  
+  cntry_score$var2= cntry_score$id + 5
+  y_labels = levels(cntry_score$id)
+  y_breaks = seq_along(y_labels) + 5
+  
+  
+  #make text label
+  cntry_labs <- subset(cntry_score, var2==18)
+  cntry_labs$ang <- seq(from=(360/nrow(cntry_labs))/1.5, to=(1.5*(360/nrow(cntry_labs)))-360, length.out=nrow(cntry_labs))+80
+  
+  cntry_labs$hjust <- 0
+  cntry_labs$hjust[which(cntry_labs$ang < -90)] <- 1
+  cntry_labs$ang[which(cntry_labs$ang < -90)] <- (180+cntry_labs$ang)[which(cntry_labs$ang < -90)]
+  
 #white space come from axis
-ggplot(cntry_score, aes(x=Country.Name, y=var2, fill=Score)) +
-  geom_tile(colour="white") +
-  scale_fill_gradient(low = "white", high = col_palette[i]) +
-  ylim(c(0, max(cntry_score$var2) + 3.6)) +
-  geom_text(data = cntry_labs, 
-            aes(x=Country.Name, y=18.8,
-            label=Country.Name, 
-            angle=ang, hjust=hjust
-            ), size=3) +
-  coord_polar(theta="x") +
-  theme(panel.background=element_blank(),
-        axis.title=element_blank(),
-        panel.grid=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks=element_blank(),
-        axis.text.y=element_blank(),
-        legend.position = 'None',
-        text=element_text(family="Circular Air Light"))
+  ggplot(cntry_score, aes(x=Country.Name, y=var2, fill=Score)) +
+    geom_tile(colour="white") +
+    scale_fill_gradient(low = "white", high = col_palette[i]) +
+    ylim(c(0, max(cntry_score$var2) + 4.2)) +
+    geom_text(data = cntry_labs, 
+              aes(x=Country.Name, y=18.8,
+              label=Country.Name, 
+              angle=ang, hjust=hjust
+              ), size=3) +
+    coord_polar(theta="x") +
+    theme(panel.background=element_blank(),
+          axis.title=element_blank(),
+          panel.grid=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks=element_blank(),
+          legend.position = 'None',
+          text=element_text(family="Circular Air Light"))
 
-ggsave(paste0(list_continent[i], ".svg"))
+ggsave(paste0(list_continent[i], "2.png"))
 }
 ```
+
+## compare with GDP per capital in the same r
+```{r}
+library(WDI)
+gdp = WDI(indicator = 'NY.GDP.PCAP.CD',start=2015, end=2015)
+cntry_score_gdp <- open_data %>% 
+  left_join(gdp, by = c('Country.Code' = 'iso2c'))%>%
+  mutate(continent = countrycode(Country.Name, "country.name", "continent")) %>%
+  mutate(continent = ifelse(Country.Name %in% c('Australia', 'New Zealand', 'Kosovo'), 'APAC & Middle East', ifelse(continent == "Asia", "APAC & Middle East", continent))) %>%
+  filter(!is.na(NY.GDP.PCAP.CD)) %>%
+  group_by(continent) %>%
+  mutate(idx = ifelse(NY.GDP.PCAP.CD == max(NY.GDP.PCAP.CD) |
+                        X2015.Score == max(X2015.Score),1,0))
+
+# #plot
+# p= cntry_score_gdp %>%
+#   ggplot(aes(X2015.Score, NY.GDP.PCAP.CD, 
+#                #way to show detail in tooltip
+#              text = paste("country:",Country.Name))) + 
+#   geom_point(aes(col = continent)) +
+#   geom_text_repel(aes(label = ifelse(idx==1, Country.Name, "")))+
+#   facet_wrap(~continent) +
+#   xlim(c(0,110)) +
+#   scale_colour_manual(values=col_palette) +
+#   my_theme() + 
+#   labs(title="GDP per Capita vs Open Data Index", caption = "Source: Open Knowledge & World Bank 2015")
+# ggplotly(p)
+
+
+```
+## How about place similar countries on the similar height
+```{r}
+p=cntry_score_gdp %>%
+  ggplot(aes(NY.GDP.PCAP.CD, X2015.Score,
+             text = paste("country:",Country.Name))) + 
+  geom_point(aes(col = continent)) +
+  facet_grid(.~continent, scales = 'free_x') +
+  scale_colour_manual(values=col_palette) +
+  my_theme() + 
+  theme(axis.text.x=element_blank()) +
+  labs(title="GDP per Capita vs Open Data Index", caption = "Source: Open Knowledge & World Bank 2015")
+#ggplotly(p)
+
+ggsave('opendata_gdp.svg')
+```
+
+
+# which category has the most and least open data
+```{r}
+cntry_score_original %>%
+  group_by(Category, Open.Data, continent) %>% summarize(n = n()) %>%
+  ggplot(aes(reorder(Category, -n), n, fill=Open.Data)) + geom_bar(stat='identity', position = position_fill()) +
+  facet_grid(.~str_wrap(continent,12)) +
+  scale_fill_manual(values=c("lightgrey", "#7AB2B3"), breaks = c(0,25,75,100)) +
+  coord_flip() + 
+  my_theme() + 
+  theme(axis.text.x=element_blank()) +
+  labs(title="Percentage of countries with open data", caption = "Source: Open Data Index")
+ggsave('opendatacategory.png')
+```
+
