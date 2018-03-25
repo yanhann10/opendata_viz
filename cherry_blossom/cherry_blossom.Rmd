@@ -1,0 +1,59 @@
+---
+title: "cherry_blossom"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r}
+cherry_blossom <- read.csv("~/git_repo/opendata_viz/cherry_blossom/cherry_blossom.csv")
+df <- cherry_blossom %>%
+  filter(!is.na(Region)) %>%
+  mutate(flowering.dt=ymd(paste0('2018 ',Flowering.date)),
+         fullbloom.dt=ymd(paste0('2018 ',Full.bloom.date))) %>%
+  select(Region, Prefecture, Location, Flowering.date, Full.bloom.date) %>%
+  gather(key, value, -Region, -Prefecture, -Location) %>%
+  mutate(dt = ymd(paste0('2018 ',value)),
+         Location = as.character(Location)) 
+```
+
+# simulate flowering cycle
+```{r}
+#fill up the date for interpolate color gradient
+df_dummy <- df %>%
+  group_by(Prefecture, Region, Location) %>%
+  complete(dt = seq.Date(min(dt), max(dt), by="day")) %>%
+  mutate(idx = 1:n())
+
+#it takes about 1 wk to reach full blossom which lasts about another wk, according to Japan-info
+#add a simulated delay days mirroring flowering-to-full bloom duration
+
+df_dummy2 <- df_dummy %>%
+  complete(dt = seq.Date(max(dt), max(dt) + (max(dt) - min(dt)), by="day")) %>%
+  arrange(desc(dt)) %>%
+  mutate(idx = 1:n())
+
+df_cycle <- df_dummy %>%
+  rbind(df_dummy2) %>%
+  unique()
+write.csv(df_cycle, 'df_cycle.csv')
+```
+
