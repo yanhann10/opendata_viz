@@ -24,11 +24,11 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 
 ## Load data
 ```{r}
-cherry_blossom <- read.csv("~/git_repo/opendata_viz/cherry_blossom/cherry_blossom.csv")
-df <- cherry_blossom %>%
-  filter(!is.na(Region)) %>%
+cherry_blossom <- read.csv("~/git_repo/opendata_viz/cherry_blossom/cherry_blossom.csv") %>%
   mutate(flowering.dt=ymd(paste0('2018 ',Flowering.date)),
-         fullbloom.dt=ymd(paste0('2018 ',Full.bloom.date))) %>%
+         fullbloom.dt=ymd(paste0('2018 ',Full.bloom.date)))
+df <- cherry_blossom %>%
+  filter(!is.na(Region))  %>%
   select(Region, Prefecture, Location, Flowering.date, Full.bloom.date) %>%
   gather(key, value, -Region, -Prefecture, -Location) %>%
   mutate(dt = ymd(paste0('2018 ',value)),
@@ -36,15 +36,15 @@ df <- cherry_blossom %>%
 ```
 
 # simulate flowering cycle
+it takes about 1 wk to reach full blossom which lasts about another wk, according to Japan-info
+
+add a simulated delay days mirroring flowering-to-full bloom duration
 ```{r}
 #fill up the date for interpolate color gradient
 df_dummy <- df %>%
   group_by(Prefecture, Region, Location) %>%
   complete(dt = seq.Date(min(dt), max(dt), by="day")) %>%
   mutate(idx = 1:n())
-
-#it takes about 1 wk to reach full blossom which lasts about another wk, according to Japan-info
-#add a simulated delay days mirroring flowering-to-full bloom duration
 
 df_dummy2 <- df_dummy %>%
   complete(dt = seq.Date(max(dt), max(dt) + (max(dt) - min(dt)), by="day")) %>%
@@ -54,6 +54,52 @@ df_dummy2 <- df_dummy %>%
 df_cycle <- df_dummy %>%
   rbind(df_dummy2) %>%
   unique()
-write.csv(df_cycle, 'df_cycle.csv')
+
+# now fill those with no value too
+df_filled <- df_cycle %>%
+  group_by(Prefecture, Region, Location) %>%
+  complete(dt = seq.Date(min(df$dt), max(df$dt), by="day"))
+df_filled$idx[is.na(df_filled$idx)] <- 0
+write.csv(df_filled, 'df_cherryblossom.csv')
+```
+
+#make a palette of 13 color from viridis magma
+```{r}
+pal <- colorRampPalette(c("#FFF7F3", "#DD3497"))
+paste0("<color>",pal(14),"</color>")
+```
+
+## the number of cities where cherry blossom is between flowering to full bloom stage
+```{r}
+df_count <- df_dummy %>%
+  group_by(dt) %>%
+  summarize(n = n_distinct(Prefecture)) %>%
+  complete(dt = seq.Date(min(dt), max(dt), by="day"))
+df_count$n[is.na(df_count$n)] <- 0
+write.csv(df_count, 'df_count.csv')
+```
+
+process cherry-blossom-viewable locations by the same dt as well
+
+
+## control gantt chart
+```{r fun}
+viewable <- function(dt) {
+  df_temp <- cherry_blossom %>%
+    filter(flowering.dt<=dt, fullbloom.dt>=dt)
+  return(df_temp)
+}
+```
+
+```{r}
+dt_seq <- seq.Date(min(df$dt), max(df$dt), by="day")
+all_viewable <- dt_seq %>%
+  map_dfr(viewable) 
+
+all_viewable_dt <- all_viewable %>%
+  group_by(Location) %>%
+  mutate(idx = 1:n()) %>%
+  mutate(dt = first(flowering.dt) + idx - 1)
+write.csv(all_viewable_dt, 'all_viewable_dt.csv')
 ```
 
