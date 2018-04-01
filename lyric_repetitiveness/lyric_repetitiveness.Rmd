@@ -44,14 +44,14 @@ df = data.frame(line = 1:71, txt = havana)%>%
 
 # Section 2: Text processing
 ```{r collocationmethod for reference}
-ud_model <- udpipe_download_model(language = "english")
-ud_model <- udpipe_load_model(ud_model$file_model)
-
-x <- udpipe_annotate(ud_model, x = as.character(df$txt), doc_id = df$line)
-x <- as.data.frame(x) 
-
-colloc <- keywords_collocation(x, term = "token", group = c("doc_id", "sentence_id"),
-ngram_max = 6, n_min = 2)
+# ud_model <- udpipe_download_model(language = "english")
+# ud_model <- udpipe_load_model(ud_model$file_model)
+# 
+# x <- udpipe_annotate(ud_model, x = as.character(df$txt), doc_id = df$line)
+# x <- as.data.frame(x) 
+# 
+# colloc <- keywords_collocation(x, term = "token", group = c("doc_id", "sentence_id"),
+# ngram_max = 6, n_min = 2)
 ```
 
 step 1: find common phrases
@@ -61,32 +61,61 @@ df%>%filter(grepl("ooh.na-na-na",txt))%>%count(1)
 
 phraseHavana = c("my heart is in havana",
 "ooh.na-na",
-"east atlanta",
-"took me back")
+"took me back to east atlanta")
 
 #occurence of these phrases
 cnt <- function (i) {
   return(data.frame(n = sum(str_count(df$txt, i))))
 }
-df_phrase <- phraseHavana %>%map_dfr(cnt) %>% cbind(phraseHavana) %>%select(word = phraseHavana, n)
+
+df_phrase <- phraseHavana %>%
+  map_dfr(cnt) %>% 
+  cbind(phraseHavana) %>%
+  select(word = phraseHavana, n) %>%
+  mutate(dummy = paste0("dummy",1:length(phraseHavana)))
+
 ```
 
-step 2: tokenize the rest
+step 2: replace the phrases with dummy so one can still retrieve their locations, then tokenize the rest
 ```{r}
-toreplace=paste(phraseHavana,collapse="|")
+replacement = paste0("dummy",1:length(phraseHavana))
+
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+{
+  stopifnot(length(patterns) == length(replacements))
+  ans = x  
+  empty = seq_along(x)
+  
+  for(i in seq_along(patterns)) {
+    greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+    ans[empty[greps]] = replacements[[i]]  
+    empty = empty[!greps]
+  }
+  return(ans)
+}
+
+```
+
+use 1 word to replace the phrase then dup it back
+```{r}
 df_word <- df %>% 
-  mutate(txt = str_replace_all(txt_original, toreplace, ""))%>%
-  unnest_tokens(word, txt)
+  mutate(txt = patternreplace(df$txt, phraseHavana, replacement))%>%
+  unnest_tokens(word, txt) %>% 
+  mutate(id=1:n())
 
-df_word_digest <- df_word %>%
+df_word_first_occurrence <- df_word %>% 
+  arrange((id)) %>%
+  group_by(word) %>% slice(1) %>% ungroup()
+
+df_combined <- df_word %>%
   group_by(word) %>%
-  summarize(n = n()) 
-```
-
-step 3: re-integrate
-```{r}
-df_combined <- df_word_digest %>%
-  rbind(df_phrase)
+  summarize(n = n()) %>%
+  left_join(df_word_first_occurrence[c('word','id')], by = "word") %>%
+  mutate(word=replace(word, word=="dummy1","my heart is in havana"))%>%
+  mutate(word=replace(word, word=="dummy2","ooh.na-na")) %>%
+  mutate(word=replace(word, word=="dummy3","took me back to east atlanta")) %>%
+  arrange(id) %>%
+  mutate(id = 1:n())
 ```
 
 
@@ -99,16 +128,21 @@ circle_layout <- function(df, n) {
   packing <- circleProgressiveLayout(df$n, sizetype='area')
   #leave gaps between circles
   packing$radius=0.8*packing$radius
-  # out <- list()
+  
   #data contains coordinate/radius of each circle
-  data = cbind(df, packing) %>% mutate(id=1:n())
+  data = cbind(df, packing) 
   #dat.gg layout each vertice on the polygon which is a proxy for circle
   dat.gg <- circleLayoutVertices(packing, npoints=50)
+  # out <- list()
   # out$packing = packing
   # out$data = data
   # out$dat.gg = dat.gg
-  circles = dat.gg %>% left_join(data[c("id","word")], by="id")
+  # return(out)
+  # these are for checking by step
+  circles = dat.gg %>% 
+    left_join(data[c("id","word","n")], by="id")
   return(circles)
+  
 }
 ```
 
@@ -135,18 +169,16 @@ show_digest <- function(df) {
 ```{r}
 p <- show_digest(df_combined) %>%
   ggplot() + 
-  geom_polygon(aes(x, y, fill=id, 
-                   text =  paste0("word: ",word)
-                   ),  alpha = 0.8) +
-  scale_fill_viridis() +
+  geom_polygon(aes(x, y, fill = id, 
+                   text =  paste0("word: ",word,
+                                  "<br>", "#repeat: ",n)),  alpha = 0.8) +
+  scale_fill_viridis(option = "plasma", direction = -1, begin = 0.1, end=0.8) +
   #geom_text(data = data, aes(x, y, size=value, label = group), color="black") +
   theme_void() + 
   theme(legend.position="none")+ 
-  coord_equal() + facet_grid(.~state)
+  coord_equal() + 
+  facet_grid(.~state)
 
 ggplotly(p)
 ```
-
-
-
 
