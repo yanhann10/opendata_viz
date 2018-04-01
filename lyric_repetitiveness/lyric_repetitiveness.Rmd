@@ -11,9 +11,6 @@ library(viridis)
 #plotly
 library(plotly) #contain hex to RGB conversion
 # set plotly user name
-#Sys.setenv("plotly_username"="HanYan")
-# set plotly API key
-#Sys.setenv("plotly_api_key"="BMtBFRWCdY4ni069FJsx")
 
 #date
 library(lubridate)
