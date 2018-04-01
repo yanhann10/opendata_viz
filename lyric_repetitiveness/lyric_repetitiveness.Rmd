@@ -11,9 +11,9 @@ library(viridis)
 #plotly
 library(plotly) #contain hex to RGB conversion
 # set plotly user name
-Sys.setenv("plotly_username"="HanYan")
+#Sys.setenv("plotly_username"="HanYan")
 # set plotly API key
-Sys.setenv("plotly_api_key"="BMtBFRWCdY4ni069FJsx")
+#Sys.setenv("plotly_api_key"="BMtBFRWCdY4ni069FJsx")
 
 #date
 library(lubridate)
@@ -22,9 +22,9 @@ library(packcircles)
 #text
 library(tidytext)
 library(quanteda)
-library(udpipe)
+#library(udpipe)
 #animate
-library(gganimate)
+#library(gganimate)
 #theme
 my_theme <- function(base_size = 12, base_family = "Helvetica"){
     theme_minimal() +
@@ -38,41 +38,62 @@ my_theme <- function(base_size = 12, base_family = "Helvetica"){
 ```
 
 #Section 1: input
-## Load data
+## Load a bath of files
+```{r}
+setwd("/Users/hannah/git_repo/opendata_viz/lyric_repetitiveness")
+temp <- list.files(pattern="*.txt")
+file <- do.call(rbind,lapply(temp,readLines))
+df_song <- data.frame(line = c(1:length(file[1, ]),
+                               1:length(file[2, ]),
+                               1:length(file[3, ])),
+                      txt = c(file[1, ], file[2, ], file[3, ]),
+                      song = c(
+                        rep("Havana", length(file[1, ])),
+                        rep("Hello", length(file[1, ])),
+                        rep("Shape of you", length(file[1, ]))
+                      ))
+```
+
+
+
 ```{r input}
-havana=readLines('/Users/hannah/git_repo/opendata_viz/lyric_repetitiveness/havana.txt') 
-#lowercase everything
-df = data.frame(line = 1:71, txt = havana)%>% 
+df = df_song %>% 
+  mutate(txt = as.character(txt), song = as.character(song)) %>%
 #remove bracket
   mutate(txt_original = as.character(tolower(txt)),
          txt=str_replace_all(txt_original, '\\(.*?\\)', ''))
 ```
 
 # Section 2: Text processing
-```{r collocationmethod for reference}
-# ud_model <- udpipe_download_model(language = "english")
-# ud_model <- udpipe_load_model(ud_model$file_model)
-# 
-# x <- udpipe_annotate(ud_model, x = as.character(df$txt), doc_id = df$line)
-# x <- as.data.frame(x) 
-# 
-# colloc <- keywords_collocation(x, term = "token", group = c("doc_id", "sentence_id"),
-# ngram_max = 6, n_min = 2)
+
+```{r}
+# use this to zoom into a potential pool of phrases
+# topfeatures(dfm(df$txt, ngrams = c(2,8), verbose = FALSE), n=30)
 ```
 
-step 1: identify common phrases
+step 1: identify common repetitive phrases with the aid of quanteda
 ```{r}
-topfeatures(dfm(df$txt, ngrams = c(2,5), verbose = FALSE), n=30)
-df%>%filter(grepl("ooh.na-na-na",txt))%>%count(1)
-
-phraseHavana = c("my heart is in havana",
-"ooh.na-na",
-"took me back to east atlanta")
+phrase = c(
+  "my heart is in havana",
+  "ooh.na-na",
+  "took me back to east atlanta",
+  "hello from the other side",
+  "i\'m sorry for everything that i\'ve done",
+  "i\'m sorry for breaking your heart",
+  "i must have called a thousand times",
+  "but when i call you never seem to be home",
+  "at least i can say that i've tried",
+  "i\'m in love with your body",
+  "every day discovering something brand new",
+  "come on now",
+  "i\'m in love with the shape of you",
+  "although my heart is falling too",
+  "be my baby")
 ```
 
 step 2: replace the phrases with dummy so one can still retrieve their locations, then tokenize the rest
 ```{r}
-replacement = paste0("dummy",1:length(phraseHavana))
+replacement = paste0("dummy",1:length(phrase))
 
 patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
 {
@@ -87,22 +108,38 @@ patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
   }
   return(ans)
 }
-
 ```
 
 use 1 word to replace the phrase then dup it back, pattern replace and reverse pattern replace to incorporate custom token
-```{r}
-df_word <- df %>% 
-  mutate(txt = patternreplace(txt, phraseHavana, replacement))%>%
-  unnest_tokens(word, txt) %>% 
-  mutate(id=1:n()) %>%
-  mutate(word = patternreplace(word, replacement, phraseHavana))
 
-df_combined <- df_word %>%
-  group_by(word) %>%
-  summarize(n = n(), id = min(id))
+```{r token}
+custom_token <- function(df, phrase, replacement) {
+  df_word <- df %>% 
+    mutate(txt = patternreplace(txt, phrase, replacement))%>%
+    unnest_tokens(word, txt) %>% 
+    mutate(word = patternreplace(word, replacement, phrase))%>%
+    group_by(song) %>%
+    mutate(id=1:n()) %>%
+    ungroup()
+  return(df_word)
+}
+
 ```
 
+```{r}
+df_word <- custom_token(df, phrase, replacement)
+
+df_half <- df_word %>%
+  group_by(song) %>%
+  filter(line<round(max(line)/2))%>%
+  ungroup() %>%
+  group_by(word, song) %>%
+  summarize(n = n(), id = min(id))
+
+df_combined <- df_word %>%
+    group_by(word, song) %>%
+    summarize(n = n(), id = min(id))
+```
 
 
 # Section 3: Visualization
@@ -114,7 +151,7 @@ circle_layout <- function(df, n) {
   packing$radius=0.8*packing$radius
   
   #data contains coordinate/radius of each circle
-  data = cbind(df, packing) 
+  data = cbind(data.frame(df), packing) 
   #dat.gg layout each vertice on the polygon which is a proxy for circle
   dat.gg <- circleLayoutVertices(packing, npoints=50)
   # out <- list()
@@ -124,25 +161,27 @@ circle_layout <- function(df, n) {
   # return(out)
   # these are for checking by step
   circles = dat.gg %>% 
-    left_join(data[c("id","word","n")], by = "id")
+    left_join(data[c("id","word","n","song")], by = "id")
   return(circles)
 }
 ```
 
 
-
 ```{r}
-show_digest <- function(df) {
-  df_dummy <- df %>% 
+show_digest <- function(df_combined, df_half) {
+  df_dummy <- df_combined %>% 
   mutate(n = 1)
   
   x <- circle_layout(df_dummy, n) %>% 
   mutate(state = as.factor("if no repetition"))
-  y <- circle_layout(df, n) %>% 
+  k <- circle_layout(df_half, n) %>% 
+  mutate(state = as.factor("half way into the song"))
+  y <- circle_layout(df_combined, n) %>% 
   mutate(state = as.factor("full song"))
 
   z <- x %>%
-  rbind(y)
+    rbind(k) %>%
+    rbind(y)
   
   return(z)
 }
@@ -150,18 +189,23 @@ show_digest <- function(df) {
 
 
 ```{r}
-p <- show_digest(df_combined) %>%
+i="Shape of you"
+png(paste0(i, ".png"), width=600, height=360)
+show_digest(
+  subset(df_combined, song==i), 
+  subset(df_half, song==i)) %>%
   ggplot() + 
-  geom_polygon(aes(x, y, fill = id, group = id, 
-                   text =  paste0("word: ",word,
-                                  "<br>", "#repeat: ",n)),  alpha = 0.8) +
-  scale_fill_viridis(option = "plasma", direction = -1, begin = 0.1, end=0.8) +
-  #geom_text(data = data, aes(x, y, size=value, label = group), color="black") +
+  geom_polygon(aes(x, y, fill = id, group = id),   alpha = 0.8) +
+  scale_fill_viridis(option="plasma", direction = -1, 
+                     begin = 0.05, end=0.7) +
+  #geom_text(aes(x, y, size=value, label = group), color="black") +
   theme_void() + 
-  theme(legend.position="none")+ 
+  theme(legend.position="none",
+        text=element_text(size=14))+ 
   coord_equal() + 
-  facet_grid(.~state)
+  facet_grid(.~state) 
+dev.off()
 
-p
+
 ```
 
