@@ -1,0 +1,108 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(viridis)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#special
+library(packcircles)
+#text
+library(tidytext)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r input}
+havana=readLines('/Users/hannah/git_repo/opendata_viz/lyric_repetitiveness/havana.txt') 
+df = data.frame(line = 1:71, txt = havana)%>% 
+  mutate(txt = as.character(txt))
+```
+
+## pre-processing
+```{r}
+df_word=df  %>%
+  unnest_tokens(word, txt)
+  
+df_word_digest <- df_word %>%
+  group_by(word) %>%
+  summarize(n = n()) 
+
+```
+
+
+```{r packedcircle}
+# to-do color by the time the word/phrase first appear
+packing <- circleProgressiveLayout(df_word_digest$n, sizetype='area')
+packing$radius=0.8*packing$radius
+data = cbind(df_word_digest, packing)
+dat.gg <- circleLayoutVertices(packing, npoints=50)
+ggplot() + 
+  geom_polygon(data = dat.gg, aes(x, y, group = id, fill=id),  alpha = 0.6) +
+  scale_fill_viridis() +
+  #geom_text(data = data, aes(x, y, size=value, label = group), color="black") +
+  theme_void() + 
+  theme(legend.position="none")+ 
+  coord_equal()
+```
+
+
+# to-do: modularize to apply on multiple songs
+```{r}
+library(quanteda)
+topfeatures(dfm(df$txt, ngrams = 5, verbose = FALSE))
+```
+```{r}
+ud_model <- udpipe_download_model(language = "english")
+ud_model <- udpipe_load_model(ud_model$file_model)
+x <- udpipe_annotate(ud_model, x = df$txt, doc_id = df$line)
+x <- as.data.frame(x)
+```
+
+```{r}
+stats <- keywords_rake(x = x, term = "lemma", group = "doc_id", 
+                       relevant = x$upos %in% c("NOUN", "ADJ"))
+stats$key <- factor(stats$keyword, levels = rev(stats$keyword))
+barchart(key ~ rake, data = head(subset(stats, freq > 3), 20), col = "cadetblue", 
+         main = "Keywords identified by RAKE", 
+         xlab = "Rake")
+```
+```{r}
+x$word <- tolower(x$token)
+stats <- keywords_collocation(x = x, term = "word", group = "doc_id")
+stats$key <- factor(stats$keyword, levels = rev(stats$keyword))
+barchart(key ~ pmi, data = head(subset(stats, freq > 2), 20), col = "cadetblue", 
+         main = "Keywords identified by PMI Collocation", 
+         xlab = "PMI (Pointwise Mutual Information)")
+```
+
+```{r}
+x$phrase_tag <- as_phrasemachine(x$upos, type = "upos")
+stats <- keywords_phrases(x = x$phrase_tag, term = tolower(x$token), 
+                          pattern = "(A|N)*N(P+D*(A|N)*N)*", 
+                          is_regex = TRUE, detailed = FALSE)
+stats <- subset(stats, ngram > 1 & freq > 2)
+stats$key <- factor(stats$keyword, levels = rev(stats$keyword))
+barchart(key ~ freq, data = head(stats, 20), col = "cadetblue", 
+         main = "Keywords - simple noun phrases", xlab = "Frequency")
+```
+```{r}
+cooc <- cooccurrence(x$lemma,  skipgram = 1)
+head(cooc)
+```
+
