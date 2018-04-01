@@ -8,7 +8,13 @@ knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
 library(viridis)
+#plotly
 library(plotly) #contain hex to RGB conversion
+# set plotly user name
+Sys.setenv("plotly_username"="HanYan")
+# set plotly API key
+Sys.setenv("plotly_api_key"="BMtBFRWCdY4ni069FJsx")
+
 #date
 library(lubridate)
 #special
@@ -54,7 +60,7 @@ df = data.frame(line = 1:71, txt = havana)%>%
 # ngram_max = 6, n_min = 2)
 ```
 
-step 1: find common phrases
+step 1: identify common phrases
 ```{r}
 topfeatures(dfm(df$txt, ngrams = c(2,5), verbose = FALSE), n=30)
 df%>%filter(grepl("ooh.na-na-na",txt))%>%count(1)
@@ -62,18 +68,6 @@ df%>%filter(grepl("ooh.na-na-na",txt))%>%count(1)
 phraseHavana = c("my heart is in havana",
 "ooh.na-na",
 "took me back to east atlanta")
-
-#occurence of these phrases
-cnt <- function (i) {
-  return(data.frame(n = sum(str_count(df$txt, i))))
-}
-
-df_phrase <- phraseHavana %>%
-  map_dfr(cnt) %>% 
-  cbind(phraseHavana) %>%
-  select(word = phraseHavana, n) %>%
-  mutate(dummy = paste0("dummy",1:length(phraseHavana)))
-
 ```
 
 step 2: replace the phrases with dummy so one can still retrieve their locations, then tokenize the rest
@@ -96,28 +90,18 @@ patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
 
 ```
 
-use 1 word to replace the phrase then dup it back
+use 1 word to replace the phrase then dup it back, pattern replace and reverse pattern replace to incorporate custom token
 ```{r}
 df_word <- df %>% 
-  mutate(txt = patternreplace(df$txt, phraseHavana, replacement))%>%
+  mutate(txt = patternreplace(txt, phraseHavana, replacement))%>%
   unnest_tokens(word, txt) %>% 
-  mutate(id=1:n())
-
-df_word_first_occurrence <- df_word %>% 
-  arrange((id)) %>%
-  group_by(word) %>% slice(1) %>% ungroup()
+  mutate(id=1:n()) %>%
+  mutate(word = patternreplace(word, replacement, phraseHavana))
 
 df_combined <- df_word %>%
   group_by(word) %>%
-  summarize(n = n()) %>%
-  left_join(df_word_first_occurrence[c('word','id')], by = "word") %>%
-  mutate(word=replace(word, word=="dummy1","my heart is in havana"))%>%
-  mutate(word=replace(word, word=="dummy2","ooh.na-na")) %>%
-  mutate(word=replace(word, word=="dummy3","took me back to east atlanta")) %>%
-  arrange(id) %>%
-  mutate(id = 1:n())
+  summarize(n = n(), id = min(id))
 ```
-
 
 
 
@@ -140,9 +124,8 @@ circle_layout <- function(df, n) {
   # return(out)
   # these are for checking by step
   circles = dat.gg %>% 
-    left_join(data[c("id","word","n")], by="id")
+    left_join(data[c("id","word","n")], by = "id")
   return(circles)
-  
 }
 ```
 
@@ -154,9 +137,9 @@ show_digest <- function(df) {
   mutate(n = 1)
   
   x <- circle_layout(df_dummy, n) %>% 
-  mutate(state = as.factor("without repetition"))
+  mutate(state = as.factor("if no repetition"))
   y <- circle_layout(df, n) %>% 
-  mutate(state = as.factor("with repetition"))
+  mutate(state = as.factor("full song"))
 
   z <- x %>%
   rbind(y)
@@ -169,7 +152,7 @@ show_digest <- function(df) {
 ```{r}
 p <- show_digest(df_combined) %>%
   ggplot() + 
-  geom_polygon(aes(x, y, fill = id, 
+  geom_polygon(aes(x, y, fill = id, group = id, 
                    text =  paste0("word: ",word,
                                   "<br>", "#repeat: ",n)),  alpha = 0.8) +
   scale_fill_viridis(option = "plasma", direction = -1, begin = 0.1, end=0.8) +
@@ -179,6 +162,6 @@ p <- show_digest(df_combined) %>%
   coord_equal() + 
   facet_grid(.~state)
 
-ggplotly(p)
+p
 ```
 
