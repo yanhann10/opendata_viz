@@ -76,7 +76,9 @@ step 1: identify common repetitive phrases with the aid of quanteda
 phrase = c(
   "my heart is in havana",
   "ooh.na-na",
+  "oh na-na-na",
   "took me back to east atlanta",
+  "take me back",
   "hello from the other side",
   "i\'m sorry for everything that i\'ve done",
   "i\'m sorry for breaking your heart",
@@ -189,7 +191,7 @@ show_digest <- function(df_combined, df_half) {
 
 
 ```{r}
-i="Shape of you"
+i="Havana"
 png(paste0(i, ".png"), width=600, height=360)
 show_digest(
   subset(df_combined, song==i), 
