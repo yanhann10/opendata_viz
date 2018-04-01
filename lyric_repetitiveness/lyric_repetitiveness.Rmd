@@ -10,8 +10,6 @@ library(RColorBrewer)
 library(viridis)
 #plotly
 library(plotly) #contain hex to RGB conversion
-# set plotly user name
-
 #date
 library(lubridate)
 #special
@@ -81,18 +79,19 @@ phrase = c(
   "i\'m sorry for breaking your heart",
   "i must have called a thousand times",
   "but when i call you never seem to be home",
-  "at least i can say that i've tried",
+  "at least i can say that i\'ve tried",
   "i\'m in love with your body",
   "every day discovering something brand new",
   "come on now",
   "i\'m in love with the shape of you",
   "although my heart is falling too",
+  "oh—i—oh—i—oh—i—oh—i",
   "be my baby")
 ```
 
 step 2: replace the phrases with dummy so one can still retrieve their locations, then tokenize the rest
 ```{r}
-replacement = paste0("dummy",1:length(phrase))
+replacement = paste0("dummy",letters[1:length(phrase)])
 
 patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
 {
@@ -116,28 +115,34 @@ custom_token <- function(df, phrase, replacement) {
   df_word <- df %>% 
     mutate(txt = patternreplace(txt, phrase, replacement))%>%
     unnest_tokens(word, txt) %>% 
-    mutate(word = patternreplace(word, replacement, phrase))%>%
-    group_by(song) %>%
-    mutate(id=1:n()) %>%
-    ungroup()
+    ungroup()%>%
+    mutate(flag_phrase = ifelse(grepl('dummy',word),1,0)) %>%
+    mutate(word = patternreplace(word, replacement, phrase))
   return(df_word)
 }
 
 ```
 
 ```{r}
-df_word <- custom_token(df, phrase, replacement)
+df_word <- custom_token(df, phrase, replacement) %>%
+  group_by(song) %>%
+  mutate(id_original = 1:n()) %>%
+  ungroup()
 
 df_half <- df_word %>%
   group_by(song) %>%
   filter(line<round(max(line)/2))%>%
   ungroup() %>%
-  group_by(word, song) %>%
-  summarize(n = n(), id = min(id))
+  group_by(word, song, flag_phrase) %>%
+  summarize(n = n(), first_occurrence = min(id_original)) %>%
+  ungroup() %>% group_by(song) %>%
+  mutate(id=1:n())
 
 df_combined <- df_word %>%
-    group_by(word, song) %>%
-    summarize(n = n(), id = min(id))
+    group_by(word, song, flag_phrase) %>%
+    summarize(n = n(), first_occurrence = min(id_original)) %>%
+    ungroup() %>% group_by(song) %>%
+    mutate(id=1:n())
 ```
 
 
@@ -160,7 +165,7 @@ circle_layout <- function(df, n) {
   # return(out)
   # these are for checking by step
   circles = dat.gg %>% 
-    left_join(data[c("id","word","n","song")], by = "id")
+    left_join(data[c("id","word","n","song","flag_phrase")], by = "id")
   return(circles)
 }
 ```
@@ -188,13 +193,41 @@ show_digest <- function(df_combined, df_half) {
 
 
 ```{r}
-i="Havana"
-png(paste0(i, ".png"), width=600, height=360)
-show_digest(
+i="Hello"
+pdf(paste0(i, "1.pdf"), bg="transparent", width=360, height=200)
+z <- show_digest(
   subset(df_combined, song==i), 
-  subset(df_half, song==i)) %>%
+  subset(df_half, song==i)) 
+z %>%
   ggplot() + 
-  geom_polygon(aes(x, y, fill = id, group = id),   alpha = 0.8) +
+  geom_polygon(aes(x, y, fill = id, group = id),
+               color=ifelse(z$flag_phrase==1,"black","white"),
+               alpha = 0.8) +
+  scale_fill_viridis(option="plasma", direction = -1, 
+                     begin = 0.05, end=0.7) +
+  #geom_text(aes(x, y, size=value, label = group), color="black") +
+  theme_void() + 
+  theme(legend.position="none",
+        text=element_blank())+ 
+  coord_equal() + 
+  facet_grid(.~state) 
+dev.off()
+
+
+```
+```{r plotly}
+i="Shape of you"
+
+z=show_digest(
+  subset(df_combined, song==i), 
+  subset(df_half, song==i)) 
+
+p= z%>%
+  ggplot() + 
+  geom_polygon(aes(x, y, fill = id, group = id, 
+               text=paste0("word: ",word)), 
+               color=ifelse(z$flag_phrase==1,"black","white"),
+               alpha = 0.8) +
   scale_fill_viridis(option="plasma", direction = -1, 
                      begin = 0.05, end=0.7) +
   #geom_text(aes(x, y, size=value, label = group), color="black") +
@@ -203,8 +236,6 @@ show_digest(
         text=element_text(size=14))+ 
   coord_equal() + 
   facet_grid(.~state) 
-dev.off()
-
+ggplotly(p)
 
 ```
-
