@@ -165,7 +165,7 @@ circle_layout <- function(df, n) {
   # return(out)
   # these are for checking by step
   circles = dat.gg %>% 
-    left_join(data[c("id","word","n","song","flag_phrase")], by = "id")
+    left_join(data[c("id","word","n","song","flag_phrase","first_occurrence")], by = "id")
   return(circles)
 }
 ```
@@ -193,25 +193,25 @@ show_digest <- function(df_combined, df_half) {
 
 
 ```{r}
-i="Hello"
-pdf(paste0(i, "1.pdf"), bg="transparent", width=360, height=200)
-z <- show_digest(
-  subset(df_combined, song==i), 
-  subset(df_half, song==i)) 
-z %>%
-  ggplot() + 
-  geom_polygon(aes(x, y, fill = id, group = id),
-               color=ifelse(z$flag_phrase==1,"black","white"),
-               alpha = 0.8) +
-  scale_fill_viridis(option="plasma", direction = -1, 
-                     begin = 0.05, end=0.7) +
-  #geom_text(aes(x, y, size=value, label = group), color="black") +
-  theme_void() + 
-  theme(legend.position="none",
-        text=element_blank())+ 
-  coord_equal() + 
-  facet_grid(.~state) 
-dev.off()
+i="Shape of you"
+  #pdf(paste0(i, "X.pdf"), bg="transparent", width=360, height=200)
+  z <- show_digest(
+    subset(df_combined, song==i), 
+    subset(df_half, song==i)) 
+  z %>%
+    ggplot() + 
+    geom_polygon(aes(x, y, fill = first_occurrence, group = id),
+                 color=ifelse(z$flag_phrase==1,"black","white"),
+                 alpha = 0.8) +
+    scale_fill_viridis(option="plasma", direction = -1, 
+                       begin = 0.05, end=0.7) +
+    #geom_text(aes(x, y, size=value, label = group), color="black") +
+    theme_void() + 
+    theme(legend.position="none",
+          text=element_blank())+ 
+    coord_equal() + 
+    facet_grid(.~state) 
+ #dev.off()
 
 
 ```
@@ -224,8 +224,9 @@ z=show_digest(
 
 p= z%>%
   ggplot() + 
-  geom_polygon(aes(x, y, fill = id, group = id, 
-               text=paste0("word: ",word)), 
+  geom_polygon(aes(x, y, fill = first_occurrence, group = id, 
+               text=paste0("word: ",word, "<br>",
+                           "first occur", first_occurrence)), 
                color=ifelse(z$flag_phrase==1,"black","white"),
                alpha = 0.8) +
   scale_fill_viridis(option="plasma", direction = -1, 
@@ -239,3 +240,12 @@ p= z%>%
 ggplotly(p)
 
 ```
+```{r feedintod3}
+library(rjson)
+output = z %>% filter(state=='full song') %>%
+  select(song, word, n,flag_phrase)
+exportJson <- toJSON(output)
+
+
+```
+
