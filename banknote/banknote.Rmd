@@ -1,0 +1,173 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+#text
+library(tidytext)
+library(spacyr)
+library(rvest)
+library(httr)
+library(plyr)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r input}
+url <- 'https://en.wikipedia.org/wiki/List_of_people_on_banknotes'
+tbls <- read_html(url) %>% html_nodes("table")
+
+headers <- read_html(url) %>% html_nodes("h3") %>%
+        html_text()
+
+head(tbls)
+tbls_ls <- tbls %>%
+        .[c(1:119)] %>%
+        html_table(fill = TRUE)
+
+## bangladesh has double tables
+tbls_ls[[10]]<-NULL
+tbls_ls[[51]]<-NULL
+tbls_ls[[95]]<-NULL
+## s109-112 need to remove header
+for (i in c(1:109, 113:106)) {
+  tbls_ls[[i]]$idx = i
+  tbls_ls[[i]]$country=gsub('\\[edit\\]','',headers[[i]])
+}
+
+df <- ldply(tbls_ls, data.frame) %>%
+  select(country, idx, everything())
+write.csv(df,'banknote.csv')
+```
+
+##clean data
+```{r}
+banknote <- read.csv("~/Downloads/banknote_in_circulation - Sheet1.csv")
+```
+
+```{r}
+patternreplace = function(x, patterns, replacements = patterns, fill = NA, ...)
+  {
+stopifnot(length(patterns) == length(replacements))
+ans = rep_len(as.character(fill), length(x))    
+empty = seq_along(x)
+
+for(i in seq_along(patterns)) {
+greps = grepl(patterns[[i]], x[empty], ... , ignore.case = T)
+ans[empty[greps]] = replacements[[i]]  
+empty = empty[!greps]
+}
+return(ans)
+}
+```
+
+```{r}
+pattern = c("Poet","Writer","Author", "Novelist",
+            "Composer","Architect","Actor",
+            "painter",
+            "Singer","artist","literature","Actress","soprano",
+            "Scientist","Mathematician","astronomer","Bacteriologist",
+            "Physicist","inventor","Chemist",
+            "scholar","historian","Academician","Intellectual",
+            "Economist","Linguist","geographer","polymath",
+            "Anthropologist","Journalist",
+            "President","prime minister","chairman","minister","governor",
+            "Premier","Statesman","Lieutenant","head of state","Revolution",
+            "politician","General","Hetman","leader","khan",
+            "fighter","military","Amir","hero","Stateswoman",
+            "Father of the Federation","Ban","lead",
+            "founding member","Head","officer","consul","suffragette",
+            "opposed","Founding father",
+            "king","queen","sultan","Prince","princess","Empress",
+            "Tsar","Pharaoh","Duke",
+            "Pope","priest","bishop",
+            "Vizier","saint","pastor")
+replacement = c("creative","creative","creative","creative",
+                "creative","creative","creative",
+                "creative",
+                "creative","creative","creative","creative","creative",
+                "scientists/intellectuals","scientists/intellectuals","scientists/intellectuals","scientists/intellectuals",
+                "scientists/intellectuals","scientists/intellectuals","scientists/intellectuals",
+                "scientists/intellectuals","scientists/intellectuals","scientists/intellectuals","scientists/intellectuals",
+                "scientists/intellectuals","scientists/intellectuals","scientists/intellectuals","scientists/intellectuals",
+                "scientists/intellectuals","scientists/intellectuals",
+                "politician","politician","politician","politician","politician",
+                "politician","politician","politician","politician","politician",
+                "politician","politician","politician","politician","politician",
+                "politician","politician","politician","politician","politician",
+                "politician","politician","politician","politician","politician",
+                "politician","politician","politician",
+                "politician","politician",
+                "royalty","royalty","royalty","royalty","royalty","royalty",
+                "royalty","royalty","royalty",
+                "religious figure","religious figure","religious figure",
+                "religious figure","religious figure","religious figure")
+banknote <- banknote %>% 
+  mutate(type = patternreplace(Reason.for.Honor, pattern, replacement)) %>%
+  mutate(type = ifelse(is.na(type),"others",type)) %>%
+  group_by(country) %>%
+  dplyr::mutate(denomination_rank = 1:n())
+
+x=banknote %>% filter(type=='others')
+write.csv(banknote, 'banknote.csv')
+```
+
+```{r}
+myColors = c("#F4D221","#F6653F","#E57B5F",
+             "#4BB3A4","#0C9DC2","#2C4B9B","#39338F")
+smry = banknote %>% group_by (country, type) %>% 
+  dplyr::summarise(n = n())
+  #                  , n_person = n_distinct(Person)) %>%
+  # mutate(xmax = cumsum(n_person), xmin = xmax - n_person,
+  #        ymin = -n/n_person,ymax = n/n_person)
+
+#png('smry.png')
+smry %>% 
+  ggplot(aes(1,n, fill=type)) + geom_bar(stat='identity',position='fill') +
+  coord_flip() +
+  facet_grid(country) + theme_void() +
+  theme(legend.position = 'None') +
+  scale_fill_manual(values = myColors)
+#dev.off()
+```
+
+```{r}
+s = smry %>% spread(type,n) %>%
+  replace(is.na(.), 0) %>%
+  ungroup() %>%
+  mutate(cnt = paste0("[",
+                      paste(creative,intellectual, politician, scientist, sep=","),
+                      "]") )%>% 
+  mutate(record = paste0("[","'",country,'\',',cnt,'],'))   %>% 
+  select(record)
+write.csv(s, 'sdonut.csv', row.names=F)
+```
+
+
+##It's all the same person
+```{r}
+smry %>%
+   ggplot(aes(type, n, fill=type)) +
+   geom_bar(stat= "identity") + 
+  facet_wrap(~country) +
+  theme_void() +
+  theme(legend.position = 'None') +
+  scale_fill_manual(values = myColors)
+```
+
