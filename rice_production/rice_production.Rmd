@@ -1,0 +1,143 @@
+---
+title: "rice producation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+library(countrycode)
+library(lazyeval)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'top', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r input}
+#source FAO, as of 2018 its latest was 2013: http://www.fao.org/faostat/en/#data/FBS
+balance = read_csv("FAO_rice_balance.csv") %>%
+  #remove duplicates
+  filter(!grepl('China,',Country)) %>% 
+  #add region and country code
+  mutate(region = countrycode(Country, "country.name","region"),
+         code = countrycode(Country, "country.name","iso3c")) %>% 
+  separate(Country, c('Country','ignore'), sep = ' \\(')
+```
+
+## production by country
+```{r}
+df <- balance %>% 
+  filter(Element=='Production') 
+```
+
+
+```{r}
+top_region = df %>% 
+  group_by(region) %>% 
+  summarize(n = sum(Value)) %>% 
+  top_n(5)
+
+df_top_region_grouped <- df  %>% 
+  mutate(region_grp = ifelse(region %in% top_region$region, region, 'Other region')) %>%
+  select(region_grp, Country, code, Element, Value) %>% spread(Element, Value)
+```
+
+Given any datadrame, group the top n by category c and sum the rest
+to pass in parameter to group_by: 
+
+1. load lazyeval 
+2. group_by_ 
+3. use double quote around the parameter
+
+```{r fun}
+group_top_n <- function(df, c, n, field){
+  df %>% 
+    group_by_(c) %>%
+    top_n(n)
+}
+```
+
+
+Find the top n
+```{r}
+df_top = group_top_n(df_top_region_grouped, "region_grp", n=5)
+```
+
+Group the rest
+```{r}
+df_top_country_grouped <- df_top_region_grouped  %>% 
+  mutate(Country = ifelse(Country %in% df_top$Country, Country, 'Others')) %>%
+  group_by(region_grp, Country) %>%
+  summarize(Production = sum(Production))
+```
+
+
+```{r}
+df_output <- df_top_country_grouped %>%
+  ungroup() %>%
+  mutate(weight = Production / sum(Production))
+
+write.csv(df_output,'df_output.csv')
+```
+
+## % consumption imported
+```{r}
+df_balance <- balance %>% 
+  filter(Element %in% c('Production','Import Quantity','Export Quantity')) %>%
+  select(region, Country, Element, Value) 
+```
+
+## find countries that import or export a lot compared to their supply
+```{r}
+df_ix = df_balance%>%
+  spread(Element, Value) %>%
+  mutate(pct_import = `Import Quantity`/`Production`,
+         pct_export = `Export Quantity`/(`Production`+`Import Quantity`))
+
+top_i = df_ix %>% 
+  arrange(desc(pct_import)) %>% 
+  filter(`Import Quantity` > 100) %>% 
+  head(8)
+
+top_x = df_ix %>% 
+  arrange(desc(pct_export)) %>% 
+  head(8)
+```
+
+```{r}
+s=df_balance%>%
+  filter(Country %in% top_i$Country) %>%
+  complete(Country, nesting(Element)) %>%
+  replace_na(list(Value=0)) %>%
+  mutate(Element = factor(Element,
+                          levels=c('Production','Import Quantity','Export Quantity'))) %>%
+  mutate(num = as.numeric(Element)) %>%
+  arrange(num) %>%
+    group_by(Country) %>%
+  mutate(Value=(ifelse(Element=="Export Quantity",-Value, Value)),
+         lag_value=lag(Value,1))%>%
+  replace_na(list(lag_value=0))%>%
+  mutate(n = cumsum(lag_value))
+
+s %>% ggplot(aes(x=num, y = n, col = Element)) + 
+  geom_segment(aes( xend = num, yend = n+Value)) + 
+  geom_point(aes(x=num, y = n+Value), size=3, alpha=0.8) + 
+  scale_x_discrete() + 
+  scale_color_manual(values = c("#DBB62A","#5DBCD2","#6E5194")) +
+  facet_wrap(~Country, nrow=2) + my_theme() +
+   labs(title = "Examples of countries that mainly import rice",
+        subtitle = 'Production, import and export in thousand tons',
+         caption = "Source: UN Food & Agriculture Organization")
+```
+
+
