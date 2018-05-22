@@ -74,7 +74,6 @@ df_skill = df %>%
   mutate(x=rep(1,600), y=value-rep(1,600)) 
 
 df_skill %>%
-  mutate(skill=gsub("_"," ",skill)) %>%
   ggplot() + 
   geom_circle(aes(x0 = x, y0=y, r=value, color=skill, alpha=0.1)) + 
   coord_equal() + 
@@ -89,11 +88,27 @@ df_skill %>%
 ## lowest/highest skill requirement
 ```{r}
 df_maxmin <- df_skill %>% 
+  ungroup() %>%
+  mutate(skill=gsub("_"," ",skill)) %>%
+  #because some sports has same skill value, this is just for avoiding overlapping max min label
+  mutate(value=value+runif(600)/1000000) %>%
   ungroup() %>% 
   group_by(skill) %>%
   mutate(easiest = ifelse(value==min(value), Sport,""),
          toughest = ifelse(value==max(value), Sport,"")) %>%
   filter(!((easiest=="")&(toughest=="")))
+
+
+df_maxmin%>%
+  ggplot() + 
+  geom_circle(aes(x0 = x, y0=y, r=value, color=skill, alpha=0.1)) + 
+  coord_equal() + 
+  geom_text(aes(x=x, y=value *2, label=Sport), size=3) +
+  facet_wrap(~skill, nrow = 2) +
+  theme_void() + my_theme() +
+  theme(text = element_text(size = 12,face="bold")) +
+  labs(title = "Toughest and Easiest Sports by Skill", caption = "Source:ESPN") +
+  scale_color_manual(values = pal)
 ```
 
 
@@ -128,7 +143,8 @@ df %>%
   ggplot(aes(skill, value, fill = skill)) +
   geom_bar(stat='identity') +
   scale_fill_manual(values = pal)+
-  geom_text(aes(y=0, label = ifelse(value<9, skill, ""),hjust=1), size=3) + 
+  geom_label(aes(y=0, label = ifelse(value<9, skill, ""),hjust=1), col="white", size=3, 
+             label.padding = unit(0.1, "lines"), alpha=0.96) + 
   coord_polar(theta = "y") +
   facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(18))) +
   theme_void() + my_theme() +
@@ -136,6 +152,7 @@ df %>%
   labs(title = "Sports that Requires Well-Rounded Skills", caption = "Source:ESPN")
 ```
 ```{r}
+#well-rounded
 df %>%
   filter(Sport %in% c("Auto Racing","Weight-Lifting","Track and Field: Sprints")) %>%
   #mutate(sport = gsub(".*: ","",Sport)) %>%
