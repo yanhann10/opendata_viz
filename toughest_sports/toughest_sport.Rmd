@@ -1,0 +1,103 @@
+---
+title: "toughest sport"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(ggforce)
+#date
+library(readxl)
+#font
+library(extrafont)
+#font_import()
+#theme
+my_theme <- function(base_size = 12, base_family = "Impact"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_blank(),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    panel.grid = element_blank(), 
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r input}
+#source: ESPN
+toughest_sport <- read_excel("git_repo/opendata_viz/toughest_sports/toughest_sport.xlsx")
+colnames(toughest_sport) = gsub(" ", "_", colnames(toughest_sport))
+```
+
+
+## calculate the median of each column
+```{r}
+toughest_sport %>% summarise_each(funs(median))
+```
+
+```{r}
+#turn into long df
+df <- toughest_sport %>%
+  select(-c(Total,Rank))  %>%
+  gather(skill, value, Endurance:Analytical_Aptitude)
+  
+```
+
+#PCA
+```{r}
+df2 = toughest_sport%>%
+  select(-c(Total,Rank))  %>%
+  remove_rownames%>%column_to_rownames(var="Sport")
+
+library(factoextra)
+res.pca <- prcomp(df2, scale = TRUE)
+fviz_eig(res.pca)
+#top 4 PC accounts for ~>85%
+```
+```{r}
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+## Skill distribution
+```{r}
+df_skill = df %>% 
+  mutate(x=rep(1,600), y=value-rep(1,600)) 
+
+df_skill %>%
+  mutate(skill=gsub("_"," ",skill)) %>%
+  ggplot() + 
+  geom_circle(aes(x0 = x, y0=y, r=value, color=skill, alpha=0.1)) + 
+  coord_equal() + 
+  facet_wrap(~skill, nrow = 2) +
+  theme_void() + my_theme() +
+  theme(text = element_text(size = 9,face="bold")) +
+  labs(title = "Levels of Skills Required by Sports", caption = "Source:ESPN") +
+  scale_color_manual(values = pal)
+  
+```
+
+## Skill requirement
+```{r}
+pal = c('#F3C844', '#F1B34B', '#EC6959', '#DD406E', '#C24488',
+                  '#A562A7', '#7B7EBF', '#4EA1B0', '#50BE8D', '#9ECA7D')
+df %>%
+  #mutate(sport = gsub(".*: ","",Sport)) %>%
+  ggplot(aes(skill, value, fill = skill)) +
+  geom_bar(stat='identity') +
+  scale_fill_manual(values = pal)+
+  coord_polar(theta = "y") +
+  facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(20)), ncol=12) +
+  theme_void() + my_theme() +
+  theme(text = element_text(size = 9,face="bold")) +
+  labs(title = "Which Sport is the Toughest of it All", caption = "Source:ESPN")
+```
+
+
+
+
