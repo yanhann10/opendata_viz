@@ -41,8 +41,12 @@ toughest_sport %>% summarise_each(funs(median))
 ```{r}
 #turn into long df
 df <- toughest_sport %>%
-  select(-c(Total,Rank))  %>%
-  gather(skill, value, Endurance:Analytical_Aptitude)
+  #select(-c(Total,Rank))  %>%
+  gather(skill, value, Endurance:Analytical_Aptitude) 
+
+levels = unique(df$Sport)
+df <- df%>%
+  mutate(Sport = factor(Sport, levels = levels))
   
 ```
 
@@ -82,6 +86,17 @@ df_skill %>%
   
 ```
 
+## lowest/highest skill requirement
+```{r}
+df_maxmin <- df_skill %>% 
+  ungroup() %>% 
+  group_by(skill) %>%
+  mutate(easiest = ifelse(value==min(value), Sport,""),
+         toughest = ifelse(value==max(value), Sport,"")) %>%
+  filter(!((easiest=="")&(toughest=="")))
+```
+
+
 ## Skill requirement
 ```{r}
 pal = c('#F3C844', '#F1B34B', '#EC6959', '#DD406E', '#C24488',
@@ -92,12 +107,46 @@ df %>%
   geom_bar(stat='identity') +
   scale_fill_manual(values = pal)+
   coord_polar(theta = "y") +
-  facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(20)), ncol=12) +
+  facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(18)), ncol=12) +
   theme_void() + my_theme() +
-  theme(text = element_text(size = 9,face="bold")) +
+  theme(text = element_text(size = 8,face="bold")) +
   labs(title = "Which Sport is the Toughest of it All", caption = "Source:ESPN")
 ```
 
-
-
+## variance in skills
+```{r}
+df %>%
+  group_by(Sport) %>% 
+  summarize(var = var(value)) %>%
+  arrange(var)
+```
+```{r}
+df %>%
+  mutate(skill=gsub("_"," ",skill)) %>%
+  filter(Sport %in% c("Fishing","Martial Arts","Water Skiing")) %>%
+  #mutate(sport = gsub(".*: ","",Sport)) %>%
+  ggplot(aes(skill, value, fill = skill)) +
+  geom_bar(stat='identity') +
+  scale_fill_manual(values = pal)+
+  geom_text(aes(y=0, label = ifelse(value<9, skill, ""),hjust=1), size=3) + 
+  coord_polar(theta = "y") +
+  facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(18))) +
+  theme_void() + my_theme() +
+  theme(text = element_text(size = 12,face="bold")) +
+  labs(title = "Sports that Requires Well-Rounded Skills", caption = "Source:ESPN")
+```
+```{r}
+df %>%
+  filter(Sport %in% c("Auto Racing","Weight-Lifting","Track and Field: Sprints")) %>%
+  #mutate(sport = gsub(".*: ","",Sport)) %>%
+  ggplot(aes(skill, value, fill = skill)) +
+  geom_bar(stat='identity') +
+  scale_fill_manual(values = pal)+
+  geom_text(aes(y = 0, label = ifelse(value > 9, skill, ""),hjust=1), size=3) +
+  coord_polar(theta = "y") +
+  facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(18))) +
+  theme_void() + my_theme() +
+  theme(text = element_text(size = 12,face="bold")) +
+  labs(title = "Sports that Emphasize Specific Skills", caption = "Source:ESPN")
+```
 
