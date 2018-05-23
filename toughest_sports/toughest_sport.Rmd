@@ -117,7 +117,6 @@ df_maxmin%>%
 pal = c('#F3C844', '#F1B34B', '#EC6959', '#DD406E', '#C24488',
                   '#A562A7', '#7B7EBF', '#4EA1B0', '#50BE8D', '#9ECA7D')
 df %>%
-  #mutate(sport = gsub(".*: ","",Sport)) %>%
   ggplot(aes(skill, value, fill = skill)) +
   geom_bar(stat='identity') +
   scale_fill_manual(values = pal)+
@@ -139,12 +138,11 @@ df %>%
 df %>%
   mutate(skill=gsub("_"," ",skill)) %>%
   filter(Sport %in% c("Fishing","Martial Arts","Water Skiing")) %>%
-  #mutate(sport = gsub(".*: ","",Sport)) %>%
   ggplot(aes(skill, value, fill = skill)) +
   geom_bar(stat='identity') +
   scale_fill_manual(values = pal)+
-  geom_label(aes(y=0, label = ifelse(value<9, skill, ""),hjust=1), col="white", size=3, 
-             label.padding = unit(0.1, "lines"), alpha=0.96) + 
+  geom_label(aes(y=0, label = ifelse(value<9, skill, ""),hjust=1),  size=3.5, 
+             label.padding = unit(0.1, "lines"), alpha=0.76) + 
   coord_polar(theta = "y") +
   facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(18))) +
   theme_void() + my_theme() +
@@ -155,11 +153,12 @@ df %>%
 #well-rounded
 df %>%
   filter(Sport %in% c("Auto Racing","Weight-Lifting","Track and Field: Sprints")) %>%
-  #mutate(sport = gsub(".*: ","",Sport)) %>%
   ggplot(aes(skill, value, fill = skill)) +
   geom_bar(stat='identity') +
   scale_fill_manual(values = pal)+
-  geom_text(aes(y = 0, label = ifelse(value > 9, skill, ""),hjust=1), size=3) +
+  geom_label(aes(y=0, label = ifelse(value > 9, skill, ""), hjust=1), 
+             size=3.5,
+             label.padding = unit(0.1, "lines"), alpha=0.76) + 
   coord_polar(theta = "y") +
   facet_wrap(~Sport, labeller = labeller(Sport = label_wrap_gen(18))) +
   theme_void() + my_theme() +
