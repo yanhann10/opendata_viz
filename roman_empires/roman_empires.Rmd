@@ -1,0 +1,125 @@
+---
+title: "the reigns and ruins of Roman empire"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error=F, warning=F)
+library(tidyverse) # CSV file I/O, e.g. the read_csv function
+library(RColorBrewer)
+library(plotly) #contain hex to RGB conversion
+#date
+library(lubridate)
+library(viridis)
+library(ggrepel)
+#theme
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'),
+    legend.position = 'None', legend.title = element_blank())
+}
+
+```
+
+## Load data
+```{r input}
+#source: https://github.com/zonination/emperors/blob/master/emperors.csv
+emperors <- read.csv("~/git_repo/opendata_viz/roman_empires/emperors.csv", stringsAsFactors=FALSE)
+```
+
+## clean data: calculate years of rule, rise to power and downfall
+
+```{r fun}
+#turn year into decimal form to recognize  BC/AD 
+date_convert = function(dt, direction=1) {
+  #direction 1=AD, -1=BC
+  date_converted = direction * (year(dt) + (strptime(dt, format = "%Y-%m-%d")$yday + 1)/365)
+  return (date_converted)
+}
+```
+
+```{r}
+df <- emperors %>%
+  mutate(reign.start = ymd(reign.start), reign.end = ymd(reign.end),
+         reign_start_corrected = ifelse(grepl("reign.start are BCE", notes), 
+                                        date_convert(reign.start, -1), date_convert(reign.start)),
+         birth = ymd(birth), death = ymd(death),
+         reign.end_corrected = date_convert(reign.end),
+         birth_corrected = ifelse(grepl("BCE", notes), date_convert(birth, -1),
+                              date_convert(birth)),
+         years_of_rule = reign.end_corrected - reign_start_corrected) %>%
+  mutate(age = reign_start_corrected - birth_corrected) 
+
+```
+
+## visualize
+use the linetype to distinguish ascension to throne via birthright or others (appointment etc), use direction of arc to show natural or unnatural death
+
+### duration of each dynasty
+```{r}
+df_dur <- df%>% 
+  group_by(dynasty) %>% 
+  summarize(total_year = round(sum(months_of_rule)/12))
+```
+
+
+```{r}
+s <- df %>%
+  group_by(dynasty) %>%
+  mutate(end.x = reign.end_corrected - first(reign_start_corrected, default = 0),
+         end.y = 0,
+         start.x = reign_start_corrected - first(reign_start_corrected, default = 0),
+         start.y = 0) %>%
+  mutate(length_of_dynasty = round(last(reign.end_corrected)-first(reign_start_corrected))) %>%
+  ungroup() %>%
+  mutate(dy = paste0(dynasty, "  (", length_of_dynasty, " years)"))
+
+s$dy = factor(s$dy, levels=unique(s$dy))
+
+s %>% 
+  arrange(index) %>%
+   ggplot() +
+     geom_curve(data = filter(s, rise == 'Birthright',cause == 'Natural Causes'),
+                aes(x = start.x, y = start.y, xend = end.x, yend = end.y, col=age),
+                curvature = -0.6, linetype=1, size = 6, alpha=0.2, lineend = "round") + 
+     geom_curve(data = filter(s, cause == 'Natural Causes'),
+                aes(x = start.x, y = start.y, xend = end.x, yend = end.y, col=age),
+                curvature = -0.6, linetype=1, size = 3, alpha=0.9, lineend = "round") + 
+     geom_curve(data = filter(s, rise == 'Birthright',cause != 'Natural Causes'),
+                aes(x = start.x, y = start.y, xend = end.x, yend = end.y, col=age),
+                curvature = 0.6, linetype=1, size = 6, alpha=0.2, lineend = "round") + 
+     geom_curve(data = filter(s, cause != 'Natural Causes'),
+                aes(x = start.x, y = start.y, xend = end.x, yend = end.y, col=age),
+                curvature = 0.6, linetype=1, size = 3, alpha=0.9, lineend = "round") + 
+     #years-in-reign at 75 percentile ~ `5 yrs
+     geom_text(data = filter(s, years_of_rule>=15, cause != 'Natural Causes'), 
+               aes(x = start.x, y = start.y, label = str_wrap(name, 14), vjust = 0.5, hjust=-0.1)) +
+     geom_text(data = filter(s, years_of_rule>=15, cause == 'Natural Causes'), 
+               aes(x = start.x, y = start.y, label = str_wrap(name, 14), vjust = -0.5, hjust=-0.1)) +
+     #add total years of dynasty at the end
+     geom_hline(yintercept = 0, alpha=0.1) +
+     scale_colour_viridis(direction=-1) +
+     theme_void() + 
+     facet_wrap(~dy, switch="y", ncol=2, labeller = labeller(dy = label_wrap_gen(width = 11))) + 
+     theme(strip.text.y = element_text(angle=180, size=12), 
+           legend.position = 'None',  
+           plot.title = element_text(face="bold", size=16, vjust=-6), 
+           plot.background = element_rect(fill = 'ghostwhite',color='white'),) +
+      ggtitle("The Roman Empire and its Dynasties")
+
+#dev.off()
+```
+```{r legend}
+ggplot() +
+     geom_curve(
+                aes(x = -1, y = 0, xend = 19, yend = 0),
+                curvature = -0.6, linetype=1, size = 3, alpha=0.9, lineend = "round") + 
+     geom_curve(aes(x = 10, y = 0, xend = 30, yend = 0),
+                curvature = -0.6, linetype=1, size = 3, alpha=0.9, lineend = "round") + 
+
+  theme_void() +geom_hline(yintercept = 0, alpha=0.1)
+```
+
