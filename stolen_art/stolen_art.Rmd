@@ -1,0 +1,231 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+knitr::opts_chunk$set(error = F, message=F, warning=F, fig.width=4.6, fig.height=4.6)
+```
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(data.table)
+knitr::opts_chunk$set(error=F, message=F, warning=F)
+```
+
+## Scraping
+
+Get all pages
+The scrape was done Oct 10. Data may change in future.
+```{r}
+scrap_page <- function(i) {
+  url <- paste0('https://www.fbi.gov/investigate/violent-crime/art-theft/national-stolen-art-file?q=&b_start:int=', i,'&Subject=')
+  page <- read_html(url)
+
+  header <- read_html(url) %>% 
+    html_nodes("p b") %>%
+    html_text() %>% as.data.frame()
+  
+  title <- read_html(url) %>% 
+    html_nodes("h3") %>%
+    html_text() %>% as.data.frame()
+  
+  content <- read_html(url) %>% 
+    html_nodes("p span") %>%
+    html_text() %>% as.data.frame()
+  
+  df_combine <- header %>% cbind(content)
+  colnames(df_combine) = c('header','content')
+  
+  df <- dcast(setDT(df_combine),  rowid(header) ~ header, value.var = 'content')
+  setnames(df, 'header', 'content')
+  
+  df <- df%>%cbind(title)
+  colnames(df)[ncol(df)] = 'Title'
+  return(df)
+}
+```
+
+
+```{r error=F, echo=F}
+item_num=seq(100,7100,by=100)
+df_all <- item_num %>%
+  map_dfr(scrap_page)
+```
+
+```{r}
+df_all%>%filter(is.na(Period))%>%count()
+```
+33% of the stolen art has no record of creation period
+## Cleaning
+
+If first 4 characters are digits, classify it into a century
+```{r}
+#work in progress
+#pseudo code:
+# If contain AD, must keep AD
+# If year is 3 digit, extract the 3 instead of 4 character from left
+# If contain text such as early/beinging/late/second quarter etc, remove then
+# Make consistent the 2 forms of year format i.e. 1800 and 19century
+
+colnames(df_all) = gsub(' ','_',colnames(df_all))
+df_all <- df_all %>% 
+  mutate(period_cleaned = tolower(Period)) %>% 
+  #remove descriptive words
+  mutate(period_cleaned = gsub(' ad|circa |early |late|prior to |printed: |manufactured: |date of birth: |mid-|second quarter |mid ', '',period_cleaned)) %>%
+  #if contain time range, took the earlier one
+  mutate(period_cleaned = gsub('[-|&](.)*','',period_cleaned)) %>%
+  #if doesn't contain number, NA
+  mutate(period_cleaned = ifelse(!str_detect(period_cleaned, '[0-9]'),NA, period_cleaned)) %>%
+  #if in the form of '19th to 20th century', group it under earlier era
+  mutate(period_cleaned = gsub(' to.*?','' , period_cleaned)) %>%
+  mutate(period_cleaned = ifelse(str_detect(period_cleaned, 'bc'),'Before 16th century',
+          ifelse(str_detect(period_cleaned, 'century'), period_cleaned,
+            as.numeric(
+            #if in the form of 1923 take first 2 digit, else take first 1 digit
+            ifelse(str_detect(period_cleaned, '[0-9]{4}'), 
+                   substr(period_cleaned,1,2), substr(period_cleaned,1,1))
+            ) )) ) %>%
+  mutate(era = ifelse(str_detect(period_cleaned, 'century'), period_cleaned,
+                      ifelse(as.numeric(period_cleaned)<16, 'Before 16th century', 
+                             paste0(period_cleaned,'th century')))) %>%
+  mutate(era = trimws(era)) %>%
+  mutate(era = case_when(
+    era %in% c('19th century','20th century','18th century','17th century','16th century','Before 16th century') ~ era,
+    era %in% c('19th 20th century','end of 19th beginning of 20th century') ~ '19th century',
+    era == '18th 19th century' ~ '18th century',
+    is.na(era) ~ 'Undated',
+    TRUE ~ 'Before 16th century'
+  )) %>%
+  #clean up category
+  mutate(category = case_when(
+    Crime_Category == 'paintings' ~ 'paintings&drawings',
+    Crime_Category == 'sculpture' ~ 'sculptures',
+    Crime_Category == 'print' ~ 'photographs&prints',
+    Crime_Category == 'books' ~ 'photographs&prints',
+    Crime_Category == 'photograph' ~ 'photographs&prints',
+    Crime_Category == 'drawing---watercolour' ~ 'paintings&drawings',
+    str_detect(Crime_Category, 'textile') ~ 'textiles',
+    str_detect(Crime_Category, 'jewellery|necklace|earring')~ 'jewelleries',
+    TRUE ~ 'others'
+  ))
+
+
+df_era <- df_all%>%
+  count(era) %>% arrange(desc(n))
+```
+
+## Analyzing
+
+### most common categories
+```{r}
+df_all %>%
+  count(Crime_Category) %>% arrange((n))
+```
+
+```{r}
+df_all %>%
+  count(category) %>% arrange(desc(n))
+```
+
+```{r}
+df_summary = df_all %>% 
+  group_by(category, era) %>%
+  count()
+write.csv(df_summary, 'df_summary.csv')
+```
+
+
+```{r}
+
+most_stolen_cat <- df_all %>%
+  count(Crime_Category) %>% arrange(desc(n)) %>% head(10)
+
+most_stolen_record <- df_all %>% select(Crime_Category, Title) %>% inner_join(most_stolen_cat)
+write.csv(most_stolen_record, 'most_stolen_record.csv')
+
+#png('ten categories.png')
+par(mar=c(5,5,5,5))
+most_stolen_cat %>%
+ggplot(aes(reorder(Crime_Category,n),n)) +
+  geom_bar(stat='identity',color='white', width=0.7) + 
+  coord_flip() +
+  geom_text(aes(label=n,hjust=-0.1)) + 
+  theme_minimal() + 
+  theme(plot.title = element_text(face="bold", size=16), 
+        
+        axis.text=element_text(size=12),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) +
+  ggtitle('Ten most stolen categories') + scale_y_continuous(limits=c(0,3000))
+#dev.off()
+```
+
+```{r}
+maker = df_all %>% count(Maker) %>% arrange(desc(n))
+write.csv(maker, 'maker.csv',row.names = F)
+```
+
+```{r}
+maker %>% head(20) %>% inner_join(df_all) %>% count(Crime_Category) %>% arrange(desc(nn))
+```
+
+
+
+```{r}
+df_all %>% count(Materials) %>% arrange(desc(n))
+```
+
+
+
+
+```{r}
+df_all%>%count(Period) %>% arrange(desc(n))
+```
+
+# size
+```{r}
+size = df_all%>%filter(category=='paintings') %>%
+  filter(!is.na(Measurements))
+```
+
+```{r}
+regexp <- "[[:digit:]]+"
+num_only = function(data) {
+  str_extract(data, regexp)}
+
+# df_clean = df %>% select(Measurements,Department, height, width, depth) %>%
+#   filter(is.na(width), !is.na(Measurements)) %>%
+#   mutate(real_dimension = gsub(".*\\((.*)\\).*", "\\1", Measurements),
+#          real_dimension = str_replace(real_dimension,"cm","")) %>%
+#   separate(real_dimension, c('real_height','real_width','real_depth'), sep=' x ',
+#            extra = "drop") %>%
+#   mutate(real_height=str_extract(real_height, regexp),
+#          real_width=str_extract(real_width, regexp),
+#          real_depth=str_extract(real_depth, regexp))
+# col=c('real_height','real_width','real_depth')
+# df_clean[cols] <- lapply(df[cols], num_only)
+
+size = size %>% 
+  mutate(real_dimension = gsub(".*\\((.*)\\).*", "\\1", Measurements),
+         real_dimension = str_replace(real_dimension,"cm","")) %>%
+  separate(real_dimension, c('real_height','real_width','real_depth'), sep=' x ',
+           extra = "drop") %>%
+  mutate(real_height=as.numeric(str_extract(real_height, regexp)),
+         real_width=as.numeric(str_extract(real_width, regexp)),
+         real_depth=as.numeric(str_extract(real_depth, regexp))) 
+
+  
+```
+
+# Artist 
+```{r}
+artist = df_all %>% 
+  filter(Maker %in% c('Max Moran', 'Dale Chihuly', 'Arbit Blatas', 'Andy Warhol', 'Edna Hibel'))
+
+artist_summary <- artist %>% group_by(Maker, category, era) %>% count()
+write.csv(artist_summary,'artist_summary.csv',row.names = F)
+```
+
+
