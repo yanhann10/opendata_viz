@@ -17,6 +17,7 @@ library(wesanderson)
 library(sqldf)
 #text
 library(tidytext)
+library(widyr)
 #library(RJSONIO) 
 #graph
 library(ggnetwork)
@@ -79,7 +80,7 @@ top_distinct_ingredients <- distinct_ingredients%>%
   group_by(Cuisine) %>%
   top_n(5, tf_idf) 
 
-write.csv(top_distinct_ingredients,'distinct_ingredients.csv')
+#write.csv(top_distinct_ingredients,'distinct_ingredients.csv')
 ```
 
 most distinct 
@@ -99,17 +100,19 @@ top_distinct_ingredients %>%
 #filter for more than 1% in any category
 ingredient <- df %>% count(Cuisine, Ingredients, sort=T) %>%
   filter(!Ingredients %in% c('salt','pepper','water','oil')) %>%
-  bind_tf_idf(Ingredients, Cuisine, n) %>%
   group_by(Cuisine) %>% 
-  mutate(pct=n/sum(n)) %>% 
-  filter(pct>=0.008) %>% 
+  filter(n>=sum(n)*0.008) %>% 
   ungroup() %>%
-  mutate(Cuisine=toTitleCase(tolower(as.character(Cuisine))))
+  bind_tf_idf(Ingredients, Cuisine, n) %>%
+  mutate(Cuisine=tools::toTitleCase(tolower(as.character(Cuisine))))
 
 #write.csv(ingredient,'ingredient_original.csv')
 
 i<- df %>% count(Ingredients, sort=T) 
 ```
+
+
+# network
 
 co-occuring ingredients globally
 ```{r sql}
@@ -121,44 +124,6 @@ co_occur = sqldf("SELECT a.Ingredients a, b.Ingredients b, COUNT(*) cnt
     AND a.Ingredients NOT IN ('salt','pepper','water')
   GROUP BY a.Ingredients, b.Ingredients")
 ```
-
-# obtain degree centrality for all ingredients
-```{r}
-g.complete <- co_occur %>% 
-  graph_from_data_frame() 
-
-versality <- as.data.frame(degree(g)) %>% 
-  rownames_to_column(var = "Ingredients") %>%
-  rename(degree = `degree(g)`) %>% na.omit()
-write.csv(versality,'versality.csv')
-```
-
-```{r}
-ingredient.w <- ingredient %>%
-  select(Cuisine, Ingredients, tf_idf) %>%
-  spread(Cuisine, tf_idf) %>% 
-  replace(is.na(.), 0) %>% 
-  left_join(i) %>%
-  left_join(versality)
-
-write.csv(ingredient.w,'ingredient.csv')
-```
-
-most frequent
-```{r}
-df %>% 
-  filter(!Ingredients %in% c('salt','pepper','water')) %>%
-  count(Cuisine, Ingredients) %>%
-  group_by(Cuisine) %>% top_n(5) %>%
-  ggplot(aes(reorder(Ingredients, n), n, fill=Cuisine)) + 
-  geom_bar(stat="identity", aes(label=Ingredients)) +
-  facet_wrap(~Cuisine, scales='free', ncol=4) +
-  theme_minimal() + coord_flip() + my_theme() + scale_fill_manual(values=col) + 
-  labs(title = 'Frequent Ingredients by Cuisine', caption = 'Ranked by frequency', source='Yummly')
-  
-
-```
-
 
 
 
@@ -178,7 +143,44 @@ g %>%
   theme(legend.position = 'None') 
 ```
 
-Asian soy sauce connected western flour-based meal and olive oil based meals.
+obtain degree centrality for all ingredients
+```{r}
+g.complete <- co_occur %>% 
+  graph_from_data_frame() 
+
+versality <- as.data.frame(degree(g)) %>% 
+  rownames_to_column(var = "Ingredients") %>%
+  rename(degree = `degree(g)`) %>% na.omit()
+write.csv(versality,'versality.csv')
+```
+
+```{r}
+ingredient.w <- ingredient %>%
+  select(Cuisine, Ingredients, tf_idf) %>%
+  spread(Cuisine, tf_idf) %>% 
+  replace(is.na(.), 0) %>% 
+  left_join(i) %>%
+  left_join(versality)
+
+#write.csv(ingredient.w,'ingredient.csv')
+```
+
+## most frequent ingredients by cuisine plot
+```{r}
+df %>% 
+  filter(!Ingredients %in% c('salt','pepper','water')) %>%
+  count(Cuisine, Ingredients) %>%
+  group_by(Cuisine) %>% top_n(5) %>%
+  ggplot(aes(reorder(Ingredients, n), n, fill=Cuisine)) + 
+  geom_bar(stat="identity", aes(label=Ingredients)) +
+  facet_wrap(~Cuisine, scales='free', ncol=4) +
+  theme_minimal() + coord_flip() + my_theme() + scale_fill_manual(values=col) + 
+  labs(title = 'Frequent Ingredients by Cuisine', caption = 'Ranked by frequency', source='Yummly')
+  
+
+```
+
+
 
 # Quitessential ingredients
 
@@ -298,22 +300,48 @@ plot(graph_from_data_frame(soy),
 
 ```
 
-#most used ingredients
+#most universal ingredients
+
+Some regional ingredients show up in other cuisine likely due to migration and fusion cuision, such as parmesan cheese in what's labeled as Chinese recipe and soy sauce in what's labeled as Southern US.
+
 ```{r}
 common_ingredients <- df %>%
   filter(!grepl('salt|pepper',Ingredients))%>%
   count(Ingredients, sort=T) %>%
   head(100)
+
+filter_for = function(x) {
+  df%>%filter(Ingredients==x)%>%group_by(Cuisine) %>%tally()
+}
+filter_for('parmesan cheese')
 ```
 
-# recommendation tree
+## Find similar cuisines
+
 ```{r}
-x=df%>%filter(Ingredients=='chicken')
+library("REdaS")
+#radian to degree conversion
+cuisine_similiarity <- df %>%
+  count(Ingredients, Cuisine, sort=T)%>%
+  pairwise_similarity(Cuisine, Ingredients, n) %>%
+  arrange(desc(similarity)) %>%
+  mutate(angle=rad2deg(acos(similarity))) %>%
+  replace(is.na(.), 0)
+
+write.csv(cuisine_similiarity,'cuisine_similiarity.csv')
+
+cuisine_similiarity %>%
+  ggplot(aes(item1, item2)) + geom_tile(aes(fill=similarity)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +scale_fill_gradient(low='white',high='blue')
 ```
+
+```{r}
+library(d3heatmap)
+d3heatmap(ingredient.w[,2:21], scale = "column")
+```
+
 
 to do:
-
-make it bipartite https://www.r-bloggers.com/collapsing-a-bipartite-co-occurrence-network/
 which countries are most similar
-which ingredients connects cultures
+predict cuisine
 
