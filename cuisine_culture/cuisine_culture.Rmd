@@ -348,23 +348,6 @@ write.csv(cuisine_similiarity, "cuisine_similiarity.csv")
 cuisine_similiarity %>%
   ggplot(aes(item1, item2)) + geom_tile(aes(fill = similarity)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_fill_gradient(low = "white", high = "blue")
-```
-
-when user has celery and egg
-
-```{r}
-df %>%
-  group_by(doc_id, Cuisine) %>% 
-  summarize(allingredients = paste(Ingredients, collapse=' ')) %>% 
-  filter(grepl("eggs", allingredients)&grepl("celery", allingredients)&grepl("chicken", allingredients)) %>%
-  group_by(Cuisine) %>%
-  summarize(n = n_distinct(doc_id)) %>%
-  ggplot(aes(Cuisine, n)) +
-  geom_segment(aes(x = Cuisine, y = 0, xend = Cuisine, yend = n)) +
-  geom_text(aes(label = ifelse(n > 1000, df$Cuisine, ""))) +
-  geom_point(aes(col = Cuisine, alpha = 0.6)) + coord_polar() +
-  theme_void() + theme(legend.position = "None")
-```
 
 to do:
 predict cuisine
