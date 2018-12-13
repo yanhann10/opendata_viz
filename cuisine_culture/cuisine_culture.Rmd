@@ -6,109 +6,122 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, error=F, warning=F, echo=F)
-#chart
+knitr::opts_chunk$set(echo = FALSE, error = F, warning = F, echo = F)
+# chart
 library(tidyverse) # CSV file I/O, e.g. the read_csv function
 library(RColorBrewer)
-library(gridExtra) #contain hex to RGB conversion
+library(gridExtra) # contain hex to RGB conversion
 library(ggrepel)
 library(wesanderson)
-#sql
+# sql
 library(sqldf)
-#text
+# text
 library(tidytext)
 library(widyr)
-#library(RJSONIO) 
-#graph
+# library(RJSONIO)
+# graph
 library(ggnetwork)
 library(igraph)
 library(ggraph)
-library(threejs)
-#plotly
+# plotly
 library(plotly)
-#theme
-my_theme <- function(base_size = 12, base_family = "Helvetica"){
-    theme_minimal() +
-    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
-    plot.title = element_text(face="bold", size=16),
-    axis.text.x = element_blank(),
-    plot.background = element_rect(fill = 'ghostwhite',color='white'),
-    legend.position = 'None', legend.title = element_blank())
+# theme
+my_theme <- function(base_size = 12, base_family = "Helvetica") {
+  theme_minimal() +
+    theme(
+      axis.title.y = element_blank(), axis.title.x = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      axis.text.x = element_blank(),
+      plot.background = element_rect(fill = "ghostwhite", color = "white"),
+      legend.position = "None", legend.title = element_blank()
+    )
 }
 
-col <- wes_palette("Darjeeling1", 20, type = "continuous")
-#col<-rep('#959F24',20)
+#col <- wes_palette("Darjeeling1", 20, type = "continuous")
+# col<-rep('#959F24',20)
+col <- viridis(20, option='B', begin=0.15,end=0.85)
 ```
 
 ## Load data
 
 
 ```{r}
-# data source: the data contains 39774 recipes from yummly 
+# data source: the data contains 39774 recipes from yummly
 
-#key cleaning steps
-#1. google refine to cluster similar names
-#2. remove words describing physical state of the ingredients such as dried/fresh/minced
-df <- read.csv("~/git_repo/opendata_viz/cuisine_culture/recipe-ingredients-dataset/cleaned_ingredients.csv", stringsAsFactors=FALSE) %>%
-  mutate(Cuisine=toupper(gsub('_',' ',Cuisine))) %>%
-  mutate(Ingredients = trimws(gsub('crushed|crumbles|ground|minced|chopped|sliced|dried|fresh|frozen|superfine|unsalted|grated|shredded|large|granulated|unsweetened|unsalted|cloves','',Ingredients))) %>%
-  #turn different forms of ingredient into one
-  mutate(Ingredients = ifelse(grepl('tomato',Ingredients),'tomato',Ingredients))%>%
-  
-  mutate(Cuisine=factor(Cuisine, levels=c("ITALIAN","FRENCH", "BRITISH","IRISH",
-                  "CHINESE","KOREAN", "JAPANESE","THAI","VIETNAMESE","FILIPINO",
-                  "SOUTHERN US", "MEXICAN", "INDIAN",      
-                 "CAJUN CREOLE","GREEK", "MOROCCAN", "SPANISH",
-                  "RUSSIAN", "JAMAICAN", "BRAZILIAN" ))) 
-
+# key cleaning steps
+# 1. google refine to cluster similar names
+# 2. remove words describing physical state of the ingredients such as dried/fresh/minced
+df <- read.csv("~/git_repo/opendata_viz/cuisine_culture/recipe-ingredients-dataset/cleaned_ingredients.csv", stringsAsFactors = FALSE) %>%
+  mutate(Cuisine = toupper(gsub("_", " ", Cuisine))) %>%
+  mutate(Ingredients = trimws(gsub("crushed|crumbles|ground|minced|chopped|sliced|dried|fresh|frozen|superfine|unsalted|grated|shredded|large|granulated|unsweetened|unsalted|cloves|extra-virgin|seeds", "", Ingredients))) %>%
+  # turn different forms of ingredient into one
+  mutate(Ingredients = ifelse(grepl("tomato", Ingredients), "tomato", Ingredients)) %>%
+  mutate(Cuisine = factor(Cuisine, levels = c(
+    "ITALIAN", "FRENCH", "BRITISH", "IRISH",
+    "CHINESE", "KOREAN", "JAPANESE", "THAI", "VIETNAMESE", "FILIPINO",
+    "SOUTHERN US", "MEXICAN", "INDIAN",
+    "CAJUN CREOLE", "GREEK", "MOROCCAN", "SPANISH",
+    "RUSSIAN", "JAMAICAN", "BRAZILIAN"
+  )))
 ```
 
+How many pastry/baking recipe
+```{r}
+ttl <- n_distinct(df$doc_id)
+pastry <- df %>% filter(grepl("baking|rising|pastry|dough", Ingredients)) %>% select(doc_id) %>% left_join(df)
+n_distinct(pastry %>% select(doc_id))
+n_distinct(pastry %>% select(doc_id)) / ttl
+
+# containing flour doesn't necessarily mean pastry, it could be fried food or taco etc
+```
 
 
 
 
 # Frequency
 ```{r}
-#ingredients that appear in at least 10 recipes
-distinct_ingredients<-df %>%
-  count(Ingredients, Cuisine, sort=T) %>%
+# ingredients that appear in at least 10 recipes
+distinct_ingredients <- df %>%
+  count(Ingredients, Cuisine, sort = T) %>%
   filter(n > 10) %>%
   bind_tf_idf(Ingredients, Cuisine, n) %>%
-  arrange(desc(tf_idf, n)) 
+  arrange(desc(tf_idf, n))
 
-top_distinct_ingredients <- distinct_ingredients%>% 
+top_distinct_ingredients <- distinct_ingredients %>%
   group_by(Cuisine) %>%
-  top_n(5, tf_idf) 
+  top_n(5, tf_idf)
 
-#write.csv(top_distinct_ingredients,'distinct_ingredients.csv')
+# write.csv(top_distinct_ingredients,'distinct_ingredients.csv')
 ```
 
 most distinct 
 ```{r facetplot}
-top_distinct_ingredients %>% 
-  ggplot(aes(reorder(Ingredients, tf_idf), tf_idf, fill=Cuisine)) + 
-  geom_bar(stat="identity", aes(label=Ingredients)) +
-  facet_wrap(~Cuisine, scales='free', ncol=4) +
-  theme_minimal() + coord_flip() + my_theme() + scale_fill_manual(values=col) + 
-  labs(title = 'Signature Ingredients by Cuisine', caption = 'Ranked by uniqueness', source='Yummly')
-  
+library(viridis)
+top_distinct_ingredients %>%
+  ggplot(aes(reorder(Ingredients, tf_idf), tf_idf,fill=Cuisine)) +
+  geom_bar(stat = "identity", aes(label = Ingredients),width=0.3) +
+  facet_wrap(~Cuisine, scales = "free", ncol = 4) +
+  theme_minimal() + coord_flip() + my_theme() + 
+  labs(title = "Signature Ingredients by Cuisine", caption = "Ranked by uniqueness", source = "Yummly") + 
+  scale_fill_viridis(discrete=T, begin=0.2,end=0.8,option='B')
 ```
 
 ## Ingredient frequency count
 
 ```{r}
-#filter for more than 1% in any category
-ingredient <- df %>% count(Cuisine, Ingredients, sort=T) %>%
-  filter(!Ingredients %in% c('salt','pepper','water','oil')) %>%
-  group_by(Cuisine) %>% 
-  filter(n>=sum(n)*0.008) %>% 
+# filter for more than 1% in any category
+ingredient <- df %>%
+  count(Cuisine, Ingredients, sort = T) %>%
+  filter(!Ingredients %in% c("salt", "pepper", "water", "oil")) %>%
+  group_by(Cuisine) %>%
+  filter(n >= sum(n) * 0.008) %>%
   ungroup() %>%
   bind_tf_idf(Ingredients, Cuisine, n) %>%
-  mutate(Cuisine=tools::toTitleCase(tolower(as.character(Cuisine))))
+  mutate(Cuisine = tools::toTitleCase(tolower(as.character(Cuisine))))
 
-#write.csv(ingredient,'ingredient_original.csv')
+# write.csv(ingredient,'ingredient_original.csv')
 
-i<- df %>% count(Ingredients, sort=T) 
+i <- df %>% count(Ingredients, sort = T)
 ```
 
 
@@ -116,7 +129,7 @@ i<- df %>% count(Ingredients, sort=T)
 
 co-occuring ingredients globally
 ```{r sql}
-co_occur = sqldf("SELECT a.Ingredients a, b.Ingredients b, COUNT(*) cnt
+co_occur <- sqldf("SELECT a.Ingredients a, b.Ingredients b, COUNT(*) cnt
   FROM  df a 
   JOIN df b 
   ON b.doc_id = a.doc_id AND b.Ingredients > a.Ingredients
@@ -128,9 +141,9 @@ co_occur = sqldf("SELECT a.Ingredients a, b.Ingredients b, COUNT(*) cnt
 
 
 ```{r}
-g <- co_occur %>% 
-  filter(cnt>1000)  %>%
-  graph_from_data_frame() 
+g <- co_occur %>%
+  filter(cnt > 1000) %>%
+  graph_from_data_frame()
 
 V(g)$Popularity <- degree(g)
 
@@ -139,45 +152,46 @@ g %>%
   geom_edge_link(aes(edge_alpha = cnt), show.legend = FALSE) +
   geom_node_point(color = "darkgreen") +
   geom_node_text(aes(label = name), repel = TRUE) +
-  theme_void() + 
-  theme(legend.position = 'None') 
+  theme_void() +
+  theme(legend.position = "None")
 ```
 
 obtain degree centrality for all ingredients
 ```{r}
-g.complete <- co_occur %>% 
-  graph_from_data_frame() 
+g.complete <- co_occur %>%
+  graph_from_data_frame()
 
-versality <- as.data.frame(degree(g)) %>% 
+versality <- as.data.frame(degree(g)) %>%
   rownames_to_column(var = "Ingredients") %>%
-  rename(degree = `degree(g)`) %>% na.omit()
-write.csv(versality,'versality.csv')
+  rename(degree = `degree(g)`) %>%
+  na.omit()
+write.csv(versality, "versality.csv")
 ```
 
 ```{r}
+#for tableau input
 ingredient.w <- ingredient %>%
   select(Cuisine, Ingredients, tf_idf) %>%
-  spread(Cuisine, tf_idf) %>% 
-  replace(is.na(.), 0) %>% 
+  spread(Cuisine, tf_idf) %>%
+  replace(is.na(.), 0) %>%
   left_join(i) %>%
   left_join(versality)
 
-#write.csv(ingredient.w,'ingredient.csv')
+# write.csv(ingredient.w,'ingredient.csv')
 ```
 
 ## most frequent ingredients by cuisine plot
 ```{r}
-df %>% 
-  filter(!Ingredients %in% c('salt','pepper','water')) %>%
+df %>%
+  filter(!Ingredients %in% c("salt", "pepper", "water")) %>%
   count(Cuisine, Ingredients) %>%
-  group_by(Cuisine) %>% top_n(5) %>%
-  ggplot(aes(reorder(Ingredients, n), n, fill=Cuisine)) + 
-  geom_bar(stat="identity", aes(label=Ingredients)) +
-  facet_wrap(~Cuisine, scales='free', ncol=4) +
-  theme_minimal() + coord_flip() + my_theme() + scale_fill_manual(values=col) + 
-  labs(title = 'Frequent Ingredients by Cuisine', caption = 'Ranked by frequency', source='Yummly')
-  
-
+  group_by(Cuisine) %>%
+  top_n(5) %>%
+  ggplot(aes(reorder(Ingredients, n), n)) +
+  geom_bar(stat = "identity", aes(label = Ingredients), fill="#96017C",width=0.3) +
+  facet_wrap(~Cuisine, scales = "free", ncol = 4) +
+  theme_minimal() + coord_flip() + my_theme() + 
+  labs(title = "Frequent Ingredients by Cuisine", caption = "Ranked by frequency", source = "Yummly")
 ```
 
 
@@ -185,7 +199,7 @@ df %>%
 # Quitessential ingredients
 
 ```{r}
-co_occur_cuisine = sqldf("SELECT a.Cuisine, a.Ingredients a, b.Ingredients b, COUNT(*) cnt
+co_occur_cuisine <- sqldf("SELECT a.Cuisine, a.Ingredients a, b.Ingredients b, COUNT(*) cnt
   FROM  df a 
   JOIN df b 
   ON b.doc_id = a.doc_id AND b.Ingredients > a.Ingredients
@@ -195,109 +209,110 @@ co_occur_cuisine = sqldf("SELECT a.Cuisine, a.Ingredients a, b.Ingredients b, CO
 
 
 ```{r}
-co_occur_select <- co_occur_cuisine %>% 
-  arrange(-cnt) %>% 
+co_occur_select <- co_occur_cuisine %>%
+  arrange(-cnt) %>%
   group_by(Cuisine) %>%
-  top_n(10) %>% select(-Cuisine,everything())
+  top_n(10) %>%
+  select(-Cuisine, everything())
 ```
 
 ```{r}
-cuisine_network = function(i) {
+cuisine_network <- function(i) {
   cuisine <- co_occur_select %>%
-  filter(Cuisine==list_cuisine[i]) %>% 
-  graph_from_data_frame() 
-  
- 
-  
-  V(cuisine)$Popularity <- igraph::degree(cuisine, mode='all')
-  
+    filter(Cuisine == list_cuisine[i]) %>% 
+    graph_from_data_frame()
+
+
+
+  V(cuisine)$Popularity <- igraph::degree(cuisine, mode = "all")
+
   (clu <- igraph::components(cuisine))
   gMax <- induced_subgraph(cuisine, V(cuisine)[clu$membership == which.max(clu$csize)])
-  
-  gMax%>%
-  ggraph(layout = 'fr') +
-  geom_edge_link(aes(edge_alpha = cnt), edge_colour = 'black', show.legend = FALSE) +
-  geom_node_point(color = col[i], aes(size=Popularity, alpha=scale(log(Popularity)))) +
-  geom_node_text(color = col[i],aes(label = name), repel = TRUE) +
-  ggtitle(list_cuisine[i]) +
-  theme_void() + 
-  theme(legend.position = 'None', 
-        plot.title = element_text(face="bold", size=16, color=col[i]),
-        plot.background = element_rect(fill = 'ghostwhite',color='grey'),
-        plot.margin = margin(5, 5, 5, 5, "pt")) 
-} 
 
+  gMax %>%
+    ggraph(layout = "linear") +
+    geom_edge_arc(aes(edge_alpha = cnt), edge_colour = col[i], show.legend = FALSE) +
+    geom_node_point(color = col[i], aes(size = Popularity, alpha = scale(log(Popularity)))) +
+    geom_node_text(color = col[i], aes(label = name), repel = TRUE,size=4) +
+    ggtitle(list_cuisine[i]) +
+    theme_void() +
+    theme(
+      legend.position = "None",
+      plot.title = element_text(face = "bold", size = 16, color = col[i]),
+      plot.background = element_rect(fill = "ghostwhite", color = "grey"),
+      plot.margin = margin(5, 5, 5, 5, "pt")
+    )
+}
 ```
 
 ```{r}
-myplots <- list()
-png('ingredient pairing.png',height=1000)
 
-list_cuisine <- unique(df$Cuisine)
-  #unique(co_occur_select$Cuisine)
+png("ingredient pairing.png",  width=600)
+myplots <- list()
+list_cuisine <- c(
+    "ITALIAN", "FRENCH", "BRITISH", "IRISH",
+    "CHINESE", "KOREAN", "JAPANESE", "THAI", "VIETNAMESE", "FILIPINO",
+    "SOUTHERN US", "MEXICAN", "INDIAN",
+    "CAJUN CREOLE", "GREEK", "MOROCCAN", "SPANISH",
+    "RUSSIAN", "JAMAICAN", "BRAZILIAN"
+  )
+# unique(co_occur_select$Cuisine)
 
 for (i in 1:20) {
   cuisine_network(i) -> myplots[[i]]
 }
 
-do.call("grid.arrange", c(myplots, ncol=2))
+do.call("grid.arrange", c(myplots, ncol = 4))
 dev.off()
+
 ```
 
-```{r}
-myplots <- list()
-for (i in 1:2) {
-  cuisine_network(i) -> myplots[[i]]
-}
-
-do.call("grid.arrange", c(myplots, ncol=2))
-```
 
 Focus on a few ingredients such as soy sauce.
 
 ```{r}
 g <- graph_from_data_frame(co_occur)
-#subset graph
+# subset graph
 
 plot_subgraph <- function(g, x) {
-  g.sub=make_ego_graph(g, 1, nodes = x, mode = c("all"))[[1]] #make a graph only with nodes connected to vertex 184 directly or indirectly
-  
-  #get distance of all the nodes from node 184
+  g.sub <- make_ego_graph(g, 1, nodes = x, mode = c("all"))[[1]] # make a graph only with nodes connected to vertex 184 directly or indirectly
+
+  # get distance of all the nodes from node 184
   dists <- distances(g.sub, x)
-  
+
   colors <- c("black", "red", "orange", "blue", "dodgerblue", "cyan")
-  V(g.sub)$color <- colors[dists+1] #because lists will start from 0 and ends at diameter, and we want to color point 184 too.
-  
+  V(g.sub)$color <- colors[dists + 1] # because lists will start from 0 and ends at diameter, and we want to color point 184 too.
+
   # Visualize the network based on geodesic distance from vertex 184 (patient zero).
-  plot(g.sub, 
-       #vertex.label=NA,
-       edge.color = 'grey',
-       vertex.size = 7,
-       vertex.color = 'brown',
-       edge.arrow.size = .05,
-       main = ""
-       )
+  plot(g.sub,
+    # vertex.label=NA,
+    edge.color = "grey",
+    vertex.size = 7,
+    vertex.color = "brown",
+    edge.arrow.size = .05,
+    main = ""
+  )
 }
 ```
 
 ```{r}
-g.filtered=graph_from_data_frame(filter(co_occur,cnt>200))
-plot_subgraph(g.filtered, 'pasta')
+g.filtered <- graph_from_data_frame(filter(co_occur, cnt > 200))
+plot_subgraph(g.filtered, "pasta")
 ```
 
 
 ```{r}
-c = unique(co_occur_cuisine$Cuisine)
+c <- unique(co_occur_cuisine$Cuisine)
 
 
-soy = co_occur_cuisine %>% filter(a=='soy sauce'|b=='soy sauce') %>% filter(cnt>=50) %>%select(-cnt)
+soy <- co_occur_cuisine %>% filter(a == "soy sauce" | b == "soy sauce") %>% filter(cnt >= 50) %>% select(-cnt)
 
 plot(graph_from_data_frame(soy),
-     vertex.shape=c("circle","square"), 
-     edge.arrow.size=0.1, vertex.label.family='Helvetica',
-     vertex.label.color='black',
-     vertex.label.cex = 0.7)
-
+  vertex.shape = c("circle", "square"),
+  edge.arrow.size = 0.1, vertex.label.family = "Helvetica",
+  vertex.label.color = "black",
+  vertex.label.cex = 0.7
+)
 ```
 
 #most universal ingredients
@@ -306,42 +321,51 @@ Some regional ingredients show up in other cuisine likely due to migration and f
 
 ```{r}
 common_ingredients <- df %>%
-  filter(!grepl('salt|pepper',Ingredients))%>%
-  count(Ingredients, sort=T) %>%
+  filter(!grepl("salt|pepper", Ingredients)) %>%
+  count(Ingredients, sort = T) %>%
   head(100)
 
-filter_for = function(x) {
-  df%>%filter(Ingredients==x)%>%group_by(Cuisine) %>%tally()
+filter_for <- function(x) {
+  df %>% filter(Ingredients == x) %>% group_by(Cuisine) %>% tally()
 }
-filter_for('parmesan cheese')
+filter_for("parmesan cheese")
 ```
 
 ## Find similar cuisines
 
 ```{r}
 library("REdaS")
-#radian to degree conversion
+# radian to degree conversion
 cuisine_similiarity <- df %>%
-  count(Ingredients, Cuisine, sort=T)%>%
+  count(Ingredients, Cuisine, sort = T) %>%
   pairwise_similarity(Cuisine, Ingredients, n) %>%
   arrange(desc(similarity)) %>%
-  mutate(angle=rad2deg(acos(similarity))) %>%
+  mutate(angle = rad2deg(acos(similarity))) %>%
   replace(is.na(.), 0)
 
-write.csv(cuisine_similiarity,'cuisine_similiarity.csv')
+write.csv(cuisine_similiarity, "cuisine_similiarity.csv")
 
 cuisine_similiarity %>%
-  ggplot(aes(item1, item2)) + geom_tile(aes(fill=similarity)) + 
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +scale_fill_gradient(low='white',high='blue')
+  ggplot(aes(item1, item2)) + geom_tile(aes(fill = similarity)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_fill_gradient(low = "white", high = "blue")
 ```
+
+when user has celery and egg
 
 ```{r}
-library(d3heatmap)
-d3heatmap(ingredient.w[,2:21], scale = "column")
+df %>%
+  group_by(doc_id, Cuisine) %>% 
+  summarize(allingredients = paste(Ingredients, collapse=' ')) %>% 
+  filter(grepl("eggs", allingredients)&grepl("celery", allingredients)&grepl("chicken", allingredients)) %>%
+  group_by(Cuisine) %>%
+  summarize(n = n_distinct(doc_id)) %>%
+  ggplot(aes(Cuisine, n)) +
+  geom_segment(aes(x = Cuisine, y = 0, xend = Cuisine, yend = n)) +
+  geom_text(aes(label = ifelse(n > 1000, df$Cuisine, ""))) +
+  geom_point(aes(col = Cuisine, alpha = 0.6)) + coord_polar() +
+  theme_void() + theme(legend.position = "None")
 ```
 
-
 to do:
-which countries are most similar
 predict cuisine
 
